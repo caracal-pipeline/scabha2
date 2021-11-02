@@ -27,6 +27,7 @@ class ParameterPolicies(object):
     positional_head: Optional[bool] = None
     # for list-type values, use this as a separator to paste them together into one argument. Otherwise:
     #  * use "list" to pass list-type values as multiple arguments (--option X Y)
+    #  * use "[]" to pass list-type values as a list  (--option [X,Y])
     #  * use "repeat" to repeat the option (--option X --option Y)
     repeat: Optional[str] = None
     # prefix for non-positional arguments
@@ -152,7 +153,7 @@ class Cargo(object):
         # pausterized name
         self.name_ = re.sub(r'\W', '_', self.name or "")  # pausterized name
         # config and logger objects
-        self.config = self.log = None
+        self.config = self.log = self.logopts = None
 
     @property
     def inputs_outputs(self):
@@ -175,14 +176,16 @@ class Cargo(object):
 
     @property 
     def finalized(self):
-        return self.log is not None
+        return self.config is not None
 
-    def finalize(self, config=None, log=None, fqname=None, nesting=0):
+    def finalize(self, config=None, log=None, logopts=None, fqname=None, nesting=0):
         if not self.finalized:
             if fqname is not None:
                 self.fqname = fqname
             self.config = config
-            self.log = log or scabha.logger()
+            self.nesting = nesting
+            self.log = log
+            self.logopts = logopts
 
     def prevalidate(self, params: Optional[Dict[str, Any]], subst: Optional[SubstitutionNS]=None):
         """Does pre-validation. No parameter substitution is done, but will check for missing params and such"""
@@ -437,6 +440,9 @@ class Cab(Cargo):
                 repeat_policy = get_policy(schema, 'repeat')
                 if repeat_policy == "list":
                     return [option] + list(value) if option else list(value)
+                elif repeat_policy == "[]":
+                    val = "[" + ",".join(value) + "]"
+                    return [option] + [val] if option else val
                 elif repeat_policy == "repeat":
                     return list(itertools.chain([option, x] for x in value)) if option else list(value)
                 elif type(repeat_policy) is str:
