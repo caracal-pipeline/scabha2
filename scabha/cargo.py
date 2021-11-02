@@ -117,6 +117,17 @@ class Parameter(object):
     pattern: Optional[str] = MISSING
 
 
+@dataclass
+class Batch(object):
+    scheduler: str
+    cpus: int = 4
+    mem: str = "128gb"
+    email: Optional[str] = None
+
+    def __init_cab(self, cab, subst: Optional[Dict[str, Any]], log: Any=None):
+        self.cab = cab
+        self.log = log
+        self.args, self.venv = self.cab.build_command_line(subst)
 
 
 @dataclass
@@ -128,9 +139,8 @@ class Cargo(object):
     inputs: Dict[str, Parameter] = EmptyDictDefault()
     outputs: Dict[str, Parameter] = EmptyDictDefault()
     defaults: Dict[str, Any] = EmptyDictDefault()
-    backend: Optional[str] = None
-
     backend: Optional[str] = None                 # backend, if not default
+    batch: Optional[Batch] = None
 
     def __post_init__(self):
         self.fqname = self.fqname or self.name
@@ -239,8 +249,7 @@ class Cargo(object):
 
 ParameterPassingMechanism = Enum("scabha.ParameterPassingMechanism", "args yaml")
 
-
-@dataclass 
+@dataclass
 class Cab(Cargo):
     """Represents a cab i.e. an atomic task in a recipe.
     See dataclass fields below for documentation of fields.
