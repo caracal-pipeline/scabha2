@@ -119,19 +119,6 @@ class Parameter(object):
 
 
 @dataclass
-class Batch(object):
-    scheduler: str
-    cpus: int = 4
-    mem: str = "128gb"
-    email: Optional[str] = None
-
-    def __init_cab(self, cab, subst: Optional[Dict[str, Any]], log: Any=None):
-        self.cab = cab
-        self.log = log
-        self.args, self.venv = self.cab.build_command_line(subst)
-
-
-@dataclass
 class Cargo(object):
     name: Optional[str] = None                    # cab name (if None, use image or command name)
     fqname: Optional[str] = None                  # fully-qualified name (recipe_name.step_label.etc.etc.)
@@ -141,7 +128,6 @@ class Cargo(object):
     outputs: Dict[str, Parameter] = EmptyDictDefault()
     defaults: Dict[str, Any] = EmptyDictDefault()
     backend: Optional[str] = None                 # backend, if not default
-    batch: Optional[Batch] = None
 
     def __post_init__(self):
         self.fqname = self.fqname or self.name
@@ -538,5 +524,15 @@ class Cab(Cargo):
 
 
 
+@dataclass
+class Batch:
+    scheduler: str = "slurm"
+    cpus: int = 4
+    mem: str = "128gb"
+    email: Optional[str] = None
 
+    def __init_cab__(self, cab: Cab, subst: Optional[Dict[str, Any]], log: Any=None):
+        self.cab = cab
+        self.log = log
+        self.args, self.venv = self.cab.build_command_line(subst)
 
