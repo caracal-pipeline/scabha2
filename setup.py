@@ -8,18 +8,20 @@ requirements = ["pyyaml",
                 "nose>=1.3.7",
                 "future-fstrings",
                 "omegaconf",
-                "pytest"
+                "click",
+                "pydantic",
+                "pytest",
                 ],
 
 PACKAGE_NAME = "scabha"
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 setup(name=PACKAGE_NAME,
       version=__version__,
-      description="Onboard services for passengers of Stimela (https://github.com/ratt-ru/Stimela) cabs",
+      description="Onboard services for passengers of Stimela (https://github.com/caracal-pipeline/stimela2) cabs",
       author="Oleg Smirnov & RATT",
       author_email="osmirnov@gmail.com",
-      url="https://github.com/ratt-ru/scabha",
+      url="https://github.com/caracal-pipeline/scabha2",
       packages=["scabha"],
       package_data={"scabha": []},
       install_requires=requirements,

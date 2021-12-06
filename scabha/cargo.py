@@ -113,6 +113,12 @@ class Parameter(object):
     # policies object, specifying a non-default way to handle this parameter
     policies: ParameterPolicies = ParameterPolicies()
 
+    # metavar corresponding to this parameter. Used when constructing command-line interfaces
+    metavar: Optional[str] = None
+
+    # abbreviated option name for this parameter.  Used when constructing command-line interfaces
+    abbreviation: Optional[str] = None
+
     # inherited from Stimela 1 -- used to handle paremeters inside containers?
     # might need a re-think, but we can leave them in for now  
     pattern: Optional[str] = MISSING
