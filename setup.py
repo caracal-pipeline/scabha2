@@ -15,6 +15,7 @@ requirements = ["pyyaml",
                 ],
 
 PACKAGE_NAME = "scabha"
+
 __version__ = "0.5.0"
 
 setup(name=PACKAGE_NAME,
