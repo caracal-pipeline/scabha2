@@ -10,6 +10,7 @@ requirements = ["pyyaml",
                 "omegaconf",
                 "click",
                 "pydantic",
+                "ruamel.yaml",
                 "pytest",
                 ],
 
