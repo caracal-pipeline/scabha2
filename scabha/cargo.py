@@ -135,7 +135,6 @@ class Cargo(object):
     inputs: Dict[str, Parameter] = EmptyDictDefault()
     outputs: Dict[str, Parameter] = EmptyDictDefault()
     defaults: Dict[str, Any] = EmptyDictDefault()
-    backend: Optional[str] = None
 
     backend: Optional[str] = None                 # backend, if not default
 
@@ -263,11 +262,11 @@ class Cab(Cargo):
         CabValidationError: [description]
     """
     # if set, the cab is run in a container, and this is the image name
-    # if not set, commands are run nativelt
+    # if not set, commands are run by the native runner
     image: Optional[str] = None                   
 
     # command to run, inside the container or natively
-    command: str = MISSING                        # command to run (inside or outside the container)
+    command: str = MISSING
 
     # if set, activates this virtual environment first before running the command (not much sense doing this inside the container)
     virtual_env: Optional[str] = None

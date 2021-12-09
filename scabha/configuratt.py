@@ -118,7 +118,11 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                     match = re.match("^\\((.+)\\)(.+)$", incl)
                     if match:
                         modulename, filename = match.groups()
-                        mod = importlib.import_module(modulename)
+                        try:
+                            mod = importlib.import_module(modulename)
+                        except ImportError as exc:
+                            raise ConfigurattError(f"{errloc}: _include {incl}: can't import {modulename} ({exc})")
+
                         filename = os.path.join(os.path.dirname(mod.__file__), filename)
                         if not os.path.exists(filename):
                             raise ConfigurattError(f"{errloc}: _include {incl}: {filename} does not exist")
