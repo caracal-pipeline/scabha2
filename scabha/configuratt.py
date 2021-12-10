@@ -280,7 +280,7 @@ def load_nested(filelist: List[str],
 
     Returns
     -------
-    OmegaConf object
+    dict
         merged config with all subsections
 
     Raises
@@ -288,7 +288,8 @@ def load_nested(filelist: List[str],
     NameError
         If subsection name is not resolved
     """
-    section_content = {}
+    section_content = {} # OmegaConf.create()
+    
     for path in filelist:
         # load file
         subconf = load(path, location=location, use_sources=use_sources, include_path=include_path)
