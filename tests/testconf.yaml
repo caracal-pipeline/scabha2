@@ -7,3 +7,12 @@ foo:
 bar:
   _use: foo
 
+hierarchical:
+  foo:
+    _include: (scabha)../tests/test_include2.yaml
+  bar:
+    _use: bar
+
+flat:
+  _use: hierarchical
+  _flatten: true

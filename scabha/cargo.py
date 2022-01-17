@@ -1,4 +1,4 @@
-import os.path, re, stat, itertools, logging, yaml, shlex
+import os.path, re, stat, itertools, logging, yaml, shlex, importlib
 from typing import Any, List, Dict, Optional, Union
 from enum import Enum
 from dataclasses import dataclass
@@ -138,6 +138,8 @@ class Cargo(object):
 
     backend: Optional[str] = None                 # backend, if not default
 
+    dynamic_schema: Optional[str] = None          # function to call to augment inputs/outputs dynamically
+
     def __post_init__(self):
         self.fqname = self.fqname or self.name
         for name in self.inputs.keys():
@@ -149,6 +151,19 @@ class Cargo(object):
         self.name_ = re.sub(r'\W', '_', self.name or "")  # pausterized name
         # config and logger objects
         self.config = self.log = self.logopts = None
+        # resolve callable for dynamic schemas
+        self._dyn_schema = None
+        if self.dynamic_schema is not None:
+            if '.' not in self.dynamic_schema:
+                raise DefinitionError(f"{self.dynamic_schema}: module_name.function_name expected")
+            modulename, funcname = self.dynamic_schema.rsplit(".", 1)
+            try:
+                mod = importlib.import_module(modulename)
+            except ImportError as exc:
+                raise DefinitionError(f"can't import {modulename}: {exc}")
+            self._dyn_schema = getattr(mod, funcname, None)
+            if not callable(self._dyn_schema):
+                raise DefinitionError(f"{modulename}.{funcname} is not a valid callable")
 
     @property
     def inputs_outputs(self):
@@ -183,8 +198,15 @@ class Cargo(object):
             self.logopts = logopts
 
     def prevalidate(self, params: Optional[Dict[str, Any]], subst: Optional[SubstitutionNS]=None):
-        """Does pre-validation. No parameter substitution is done, but will check for missing params and such"""
+        """Does pre-validation. 
+        No parameter substitution is done, but will check for missing params and such.
+        A dynamic schema, if defined, is applied at this point."""
         self.finalize()
+        # update schemas, if dynamic schema is enabled
+        if self._dyn_schema:
+            self._inputs_outputs = None
+            self.inputs, self.outputs = self._dyn_schema(params, self.inputs, self.outputs)
+        # prevalidate parameters
         self.params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
                                           create_dirs=False, expand_globs=False, ignore_subst_errors=True)
@@ -274,8 +296,6 @@ class Cab(Cargo):
     # controls how params are passed. args: via command line argument, yml: via a single yml string
     parameter_passing: ParameterPassingMechanism = ParameterPassingMechanism.args
 
-    # # not sure why this is here, let's retire (recipe defines "dirs")
-    # msdir: Optional[bool] = False
     # cab management and cleanup definitions
     management: CabManagement = CabManagement()
 

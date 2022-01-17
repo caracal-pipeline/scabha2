@@ -68,6 +68,27 @@ def _lookup_name(name: str, *sources: List[Dict]):
     raise NameError(f"unknown key {name}")
 
 
+def _flatten_subsections(conf):
+    """Recursively flattens subsections in a DictConfig (modifying in place)
+    A structure such as
+        a:
+            b: 1
+            c: 2
+    Becomes
+        a.b: 1
+        a.c: 2
+
+    Args:
+        conf (DictConfig): config to flatten
+    """
+    subsections = [(key, value) for key, value in conf.items() if isinstance(value, DictConfig)]
+    for name, subsection in subsections:
+        conf.pop(name)
+        _flatten_subsections(subsection)
+        for key, value in subsection.items():
+            conf[f"{name}.{key}"] = value
+
+
 def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], include_path: Optional[str]=None):
     """Resolves cross-references ("_use" fieds) in config object
 
@@ -100,73 +121,97 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
 
     if isinstance(conf, DictConfig):
 
-        # handle _include entries
-        if includes:
-            while "_include" in conf:
-                include_files = conf.pop("_include")
-                if isinstance(include_files, str):
-                    include_files = [include_files]
-                elif not isinstance(include_files, (tuple, list, ListConfig)) or not all(isinstance(x, str) for x in include_files):
-                    raise ConfigurattError(f"{errloc}: _include: must be a string or a list of strings")
+        # since _use and _include statements can be nested, keep on processing until all are resolved        
+        updated = True
+        recurse = 0
+        flatten = conf.pop("_flatten", False)
+        
+        while updated:
+            updated = False
+            # check for infinite recursion
+            recurse += 1
+            if recurse > 20:
+                raise ConfigurattError(f"{errloc}: recursion limit exceeded, check your _use and _include statements")
 
-                # load includes
-                for incl in include_files:
-                    if not incl:
-                        raise ConfigurattError(f"{errloc}: empty _include specifier")
+            # handle _include entries
+            if includes:
+                include_files = conf.pop("_include", None)
+                if include_files:
+                    updated = True
+                    if isinstance(include_files, str):
+                        include_files = [include_files]
+                    elif not isinstance(include_files, (tuple, list, ListConfig)) or not all(isinstance(x, str) for x in include_files):
+                        raise ConfigurattError(f"{errloc}: _include: must be a string or a list of strings")
 
-                    # check for (module)filename.yaml style
-                    match = re.match("^\\((.+)\\)(.+)$", incl)
-                    if match:
-                        modulename, filename = match.groups()
-                        try:
-                            mod = importlib.import_module(modulename)
-                        except ImportError as exc:
-                            raise ConfigurattError(f"{errloc}: _include {incl}: can't import {modulename} ({exc})")
+                    # load includes
+                    for incl in include_files:
+                        if not incl:
+                            raise ConfigurattError(f"{errloc}: empty _include specifier")
 
-                        filename = os.path.join(os.path.dirname(mod.__file__), filename)
-                        if not os.path.exists(filename):
-                            raise ConfigurattError(f"{errloc}: _include {incl}: {filename} does not exist")
+                        # check for (module)filename.yaml style
+                        match = re.match("^\\((.+)\\)(.+)$", incl)
+                        if match:
+                            modulename, filename = match.groups()
+                            try:
+                                mod = importlib.import_module(modulename)
+                            except ImportError as exc:
+                                raise ConfigurattError(f"{errloc}: _include {incl}: can't import {modulename} ({exc})")
 
-                    # absolute path -- one candidate
-                    elif os.path.isabs(incl):
-                        if not os.path.exists(incl):
-                            raise ConfigurattError(f"{errloc}: _include {incl} does not exist")
-                        filename = incl
-                    # relative path -- scan PATH for candidates
-                    else:
-                        candidates = [os.path.join(p, incl) for p in PATH]
-                        for filename in candidates:
-                            if os.path.exists(filename):
-                                break
+                            filename = os.path.join(os.path.dirname(mod.__file__), filename)
+                            if not os.path.exists(filename):
+                                raise ConfigurattError(f"{errloc}: _include {incl}: {filename} does not exist")
+
+                        # absolute path -- one candidate
+                        elif os.path.isabs(incl):
+                            if not os.path.exists(incl):
+                                raise ConfigurattError(f"{errloc}: _include {incl} does not exist")
+                            filename = incl
+                        # relative path -- scan PATH for candidates
                         else:
-                            raise ConfigurattError(f"{errloc}: _include {incl} not found in {':'.join(PATH)}")
+                            candidates = [os.path.join(p, incl) for p in PATH]
+                            for filename in candidates:
+                                if os.path.exists(filename):
+                                    break
+                            else:
+                                raise ConfigurattError(f"{errloc}: _include {incl} not found in {':'.join(PATH)}")
 
-                    # load included file
-                    incl_conf = load(filename, location=location, 
-                                        name=f"{filename}, included from {name}",
-                                        includes=True, use_sources=[])
+                        # load included file
+                        incl_conf = load(filename, location=location, 
+                                            name=f"{filename}, included from {name}",
+                                            includes=True, use_sources=[])
 
-                    if include_path is not None:
-                        incl_conf[include_path] = filename
+                        if include_path is not None:
+                            incl_conf[include_path] = filename
 
-                    conf = OmegaConf.merge(conf, incl_conf)
+                        # flatten structure
+                        if flatten:
+                            _flatten_subsections(incl_conf)
 
-        # handle _use entries
-        if use_sources is not None:
-            while "_use" in conf:
-                merge_sections = conf.pop("_use")
-                if type(merge_sections) is str:
-                    merge_sections = [merge_sections]
-                elif not isinstance(merge_sections, Sequence):
-                    raise TypeError(f"invalid {name}._use field of type {type(merge_sections)}")
-                if len(merge_sections):
-                    # convert to actual sections
-                    merge_sections = [_lookup_name(name, *use_sources) for name in merge_sections]
-                    # merge them all
-                    base = merge_sections[0].copy()
-                    base.merge_with(*merge_sections[1:])
-                    base.merge_with(conf)
-                    conf = base
+                        conf = OmegaConf.merge(conf, incl_conf)
+
+            # handle _use entries
+            if use_sources is not None:
+                merge_sections = conf.pop("_use", None)
+                if merge_sections:
+                    updated = True
+                    if type(merge_sections) is str:
+                        merge_sections = [merge_sections]
+                    elif not isinstance(merge_sections, Sequence):
+                        raise TypeError(f"invalid {name}._use field of type {type(merge_sections)}")
+                    if len(merge_sections):
+                        # convert to actual sections
+                        merge_sections = [_lookup_name(name, *use_sources) for name in merge_sections]
+                        # merge them all together
+                        base = merge_sections[0].copy()
+                        base.merge_with(*merge_sections[1:])
+                        # resolve references before flattening
+                        base = _resolve_config_refs(base, name=name, 
+                                                location=f"{location}._use" if location else "_use", 
+                                                includes=includes, use_sources=use_sources, include_path=include_path)
+                        if flatten:
+                            _flatten_subsections(base)
+                        base.merge_with(conf)
+                        conf = base
 
         # recurse into content
         for key, value in conf.items_ex(resolve=False):

@@ -150,8 +150,8 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
             except Exception as exc:
                 raise SchemaError(f"invalid {mkname(name)}.dtype = {schema.dtype}")
 
-            # sanitize name: datacalsss won't take hyphens
-            fldname = name.replace("-", "_")
+            # sanitize name: dataclass won't take hyphens or periods
+            fldname = name.replace("-", "_").replace(".", "_")
             while fldname in field2name:
                 fldname += "_"
             field2name[fldname] = name
@@ -159,7 +159,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
 
             fields.append((fldname, dtype_impl))
             
-            # OmegaConf dicts/lists need to be converted to standard contrainers for pydantic to take them
+            # OmegaConf dicts/lists need to be converted to standard containers for pydantic to take them
             if isinstance(value, (ListConfig, DictConfig)):
                 inputs[name] = OmegaConf.to_container(value)
 
