@@ -21,6 +21,8 @@ Conditional = Optional[str]
 
 @dataclass 
 class ParameterPolicies(object):
+    # if true, parameter is passed as key=value, not command line option
+    key_value: Optional[bool] = None
     # if true, value is passed as a positional argument, not an option
     positional: Optional[bool] = None
     # if true, value is head-positional, i.e. passed *before* any options
@@ -416,6 +418,10 @@ class Cab(Cargo):
                 return self.policies[policy]
 
         def stringify_argument(name, value, schema, option=None):
+            key_value = get_policy(schema, 'key_value')
+            if key_value:
+                return f"{name}={value}"
+
             if value is None:
                 return None
             if schema.dtype == "bool" and not value and get_policy(schema, 'explicit_false') is None:

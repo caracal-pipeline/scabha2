@@ -68,7 +68,7 @@ def _lookup_name(name: str, *sources: List[Dict]):
     raise NameError(f"unknown key {name}")
 
 
-def _flatten_subsections(conf):
+def _flatten_subsections(conf, depth=1):
     """Recursively flattens subsections in a DictConfig (modifying in place)
     A structure such as
         a:
@@ -80,11 +80,13 @@ def _flatten_subsections(conf):
 
     Args:
         conf (DictConfig): config to flatten
+        depth (int):       depth to which to flatten. Default is 1 level.
     """
     subsections = [(key, value) for key, value in conf.items() if isinstance(value, DictConfig)]
     for name, subsection in subsections:
         conf.pop(name)
-        _flatten_subsections(subsection)
+        if depth > 1:
+            _flatten_subsections(subsection, depth-1)
         for key, value in subsection.items():
             conf[f"{name}.{key}"] = value
 
@@ -124,7 +126,9 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
         # since _use and _include statements can be nested, keep on processing until all are resolved        
         updated = True
         recurse = 0
-        flatten = conf.pop("_flatten", False)
+        flatten = conf.get("_flatten", 0)
+        if "_flatten" in conf:
+            del conf["_flatten"]
         
         while updated:
             updated = False
@@ -135,8 +139,9 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
 
             # handle _include entries
             if includes:
-                include_files = conf.pop("_include", None)
+                include_files = conf.get("_include", None)
                 if include_files:
+                    del conf["_include"]
                     updated = True
                     if isinstance(include_files, str):
                         include_files = [include_files]
@@ -185,14 +190,15 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
 
                         # flatten structure
                         if flatten:
-                            _flatten_subsections(incl_conf)
+                            _flatten_subsections(incl_conf, flatten)
 
                         conf = OmegaConf.merge(conf, incl_conf)
 
             # handle _use entries
             if use_sources is not None:
-                merge_sections = conf.pop("_use", None)
+                merge_sections = conf.get("_use", None)
                 if merge_sections:
+                    del conf["_use"]
                     updated = True
                     if type(merge_sections) is str:
                         merge_sections = [merge_sections]
@@ -209,7 +215,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                                                 location=f"{location}._use" if location else "_use", 
                                                 includes=includes, use_sources=use_sources, include_path=include_path)
                         if flatten:
-                            _flatten_subsections(base)
+                            _flatten_subsections(base, flatten)
                         base.merge_with(conf)
                         conf = base
 
