@@ -509,6 +509,8 @@ class Cab(Cargo):
             if skip:
                 continue
 
+            key_value = get_policy(schema, 'key_value')
+
             # apply replacementss
             replacements = get_policy(schema, 'replace')
             if replacements:
@@ -518,8 +520,11 @@ class Cab(Cargo):
             option = (get_policy(schema, 'prefix') or "--") + (schema.nom_de_guerre or name)
 
             if schema.dtype == "bool":
-                explicit = get_policy(schema, 'explicit_true' if value else 'explicit_false')
-                args += [option, str(explicit)] if explicit is not None else ([option] if value else [])
+                if key_value:
+                    args += [f"{name}={value}"]
+                else:
+                    explicit = get_policy(schema, 'explicit_true' if value else 'explicit_false')
+                    args += [option, str(explicit)] if explicit is not None else ([option] if value else [])
             else:
                 value = stringify_argument(name, value, schema, option=option)
                 if type(value) is list:
