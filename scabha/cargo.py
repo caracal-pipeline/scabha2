@@ -40,6 +40,9 @@ class ParameterPolicies(object):
     # if True, implicit parameters will be skipped automatically
     skip_implicits: bool = True
 
+    # if set, {}-substitutions on this paramater will not be done
+    disable_substitutions: Optional[bool] = None
+
     # how to pass boolean True values. None = pass option name alone, else pass option name + given value
     explicit_true: Optional[str] = None
     # how to pass boolean False values. None = skip option, else pass option name + given value

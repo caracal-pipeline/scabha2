@@ -114,6 +114,9 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
     if subst is not None:
         with substitutions_from(subst, raise_errors=False) as context:
             for key, value in inputs.items():
+                # do not substitute things that are not in the schema, or things for which substitutions are disabled
+                if key not in schemas or schemas[key].policies.disable_substitutions:
+                    continue
                 inputs[key] = context.evaluate(value, location=[fqname, key] if fqname else [key])
                 # ignore errors if requested
                 if ignore_subst_errors and context.errors:
