@@ -1,8 +1,8 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
-from typing import Any, List, Dict, Optional, Union
+from typing import Any, List, Dict, Optional, OrderedDict, Union
 from enum import Enum
 from dataclasses import dataclass
-from omegaconf import MISSING
+from omegaconf import MISSING, ListConfig, DictConfig
 
 
 import scabha
@@ -128,7 +128,20 @@ class Parameter(object):
     # might need a re-think, but we can leave them in for now  
     pattern: Optional[str] = MISSING
 
+    # arbitrary metadata associated with parameter
+    metadata: Dict[str, Any] = EmptyDictDefault() 
 
+
+    def __post_init__(self):
+        def natify(value):
+            # convert OmegaConf lists and dicts to native types
+            if type(value) in (list, ListConfig):
+                return [natify(x) for x in value]
+            elif type(value) in (dict, OrderedDict, DictConfig):
+                return OrderedDict([(name, natify(value)) for name, value in value.items()])
+            return value
+        self.default = natify(self.default)
+        self.choices = natify(self.choices)
 
 
 @dataclass

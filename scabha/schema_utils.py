@@ -4,7 +4,7 @@ from .cargo import Parameter
 from .exceptions import SchemaError
 from dataclasses import make_dataclass, field
 from omegaconf import OmegaConf
-from collections import OrderedDict
+from collections import OrderedDict, MutableSet, MutableSequence, MutableMapping
 
 def schema_to_dataclass(io: Dict[str, Parameter], class_name: str, bases=(), post_init: Optional[Callable] =None):
     """Converts a scabha schema to a dataclass.
@@ -38,14 +38,27 @@ def schema_to_dataclass(io: Dict[str, Parameter], class_name: str, bases=(), pos
             fldname += "_"
         field2name[fldname] = name
 
+        # form up metadata
         metadata = dict(help=schema.info, parameter=name)
+        metadata.update(schema.metadata)
         if schema.choices:
             metadata['choices'] = schema.choices
-        fld = field(default=schema.default, metadata=metadata)
+
+        if isinstance(schema.default, (MutableSequence, MutableSet, MutableMapping)):
+            defval = schema.default.copy()
+            def default_factory():
+                return defval
+            fld = field(default=defval, metadata=metadata)
+            ## OMS: although the below seems the correect thing to do, in practice it causes the field
+            ## to be omitted from the dataclass instance, as if there was no default at all.
+            ## The above works, despite documentation (https://docs.python.org/3/library/dataclasses.html, bottom) saying it shouldn't.
+            # fld = field(default_factory=default_factory, metadata=metadata)
+        else:
+            fld = field(default=schema.default, metadata=metadata)
 
         fields.append((fldname, dtype_impl, fld))
     
-    namespace = None if post_init is None else dict(__post__init__=post_init)
+    namespace = None if post_init is None else dict(__post_init__=post_init)
 
     return make_dataclass(class_name, fields, bases=bases, namespace=namespace)
 
