@@ -9,7 +9,7 @@ from collections import OrderedDict, MutableSet, MutableSequence, MutableMapping
 def schema_to_dataclass(io: Dict[str, Parameter], class_name: str, bases=(), post_init: Optional[Callable] =None):
     """Converts a scabha schema to a dataclass.
        Each parameter in the schema will correspond to a field. Metadata of fields will contain:
-        'help' for info, 'choices' for the choices field, 'parameter' for parameter name 
+        'help' for info, 'choices' for the choices field, 'parameter' for parameter name
 
     Args:
         io (Dict[str, Parameter]): dict of parameters
@@ -46,23 +46,31 @@ def schema_to_dataclass(io: Dict[str, Parameter], class_name: str, bases=(), pos
         if schema.element_choices:
             metadata['element_choices'] = schema.element_choices
 
-        if isinstance(schema.default, (MutableSequence, MutableSet, MutableMapping)):
-            defval = schema.default.copy()
-            def default_factory():
-                return defval
-            fld = field(default=defval, metadata=metadata)
-            ## OMS: although the below seems the correect thing to do, in practice it causes the field
-            ## to be omitted from the dataclass instance, as if there was no default at all.
-            ## The above works, despite documentation (https://docs.python.org/3/library/dataclasses.html, bottom) saying it shouldn't.
-            # fld = field(default_factory=default_factory, metadata=metadata)
+        if isinstance(schema.default, MutableSequence):
+            fld = field(default_factory=default_wrapper(list, schema.default),
+                        metadata=metadata)
+        elif isinstance(schema.default, MutableSet):
+            fld = field(default_factory=default_wrapper(set, schema.default),
+                        metadata=metadata)
+        elif isinstance(schema.default, MutableMapping):
+            fld = field(default_factory=default_wrapper(dict, schema.default),
+                        metadata=metadata)
         else:
             fld = field(default=schema.default, metadata=metadata)
 
         fields.append((fldname, dtype_impl, fld))
-    
+
     namespace = None if post_init is None else dict(__post_init__=post_init)
 
     return make_dataclass(class_name, fields, bases=bases, namespace=namespace)
+
+
+def default_wrapper(default_type, default_value):
+
+    def default_factory():
+        return default_type(default_value)
+
+    return default_factory
 
 
 def nested_schema_to_dataclass(nested: Dict[str, Dict], class_name: str, bases=(), section_bases=(), post_init_map={}):
@@ -87,9 +95,9 @@ def nested_schema_to_dataclass(nested: Dict[str, Dict], class_name: str, bases=(
 
     # convert per-section schemas into dataclasses and make list of fields for outer dataclass
     for section, content in nested.items():
-        dcls = schema_to_dataclass(content, f"{class_name}_{section}", 
+        dcls = schema_to_dataclass(content, f"{class_name}_{section}",
                                     bases=section_bases, post_init=post_init_map.get(section))
-                                    
+
         fields.append((section, dcls, field(default=dcls())))
 
     # return the outer dataclass
@@ -127,7 +135,7 @@ def clickify_parameters(schemas: Dict[str, Any]):
             if schema.abbreviation:
                 optnames.append(f"-{schema.abbreviation}")
 
-            deco = click.option(*optnames, type=dtype, 
+            deco = click.option(*optnames, type=dtype,
                                 default=schema.default, required=schema.required, metavar=schema.metavar,
                                 help=schema.info)
 
