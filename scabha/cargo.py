@@ -96,8 +96,11 @@ class Parameter(object):
     # if True, parameter is required
     required: bool = False
 
-    # choices for an option-type parameter (should this be List[str]?)
+    # restrict value choices, i.e. making for an option-type parameter 
     choices:  Optional[List[Any]] = ()
+
+    # for List or Dict-type parameters, restict values of list elements or dict entries to a list of choices
+    element_choices: Optional[List[Any]] = None
 
     # default value
     default: Optional[Any] = None

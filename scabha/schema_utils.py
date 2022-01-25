@@ -43,6 +43,8 @@ def schema_to_dataclass(io: Dict[str, Parameter], class_name: str, bases=(), pos
         metadata.update(schema.metadata)
         if schema.choices:
             metadata['choices'] = schema.choices
+        if schema.element_choices:
+            metadata['element_choices'] = schema.element_choices
 
         if isinstance(schema.default, (MutableSequence, MutableSet, MutableMapping)):
             defval = schema.default.copy()
