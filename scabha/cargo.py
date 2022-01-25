@@ -124,9 +124,9 @@ class Parameter(object):
     # abbreviated option name for this parameter.  Used when constructing command-line interfaces
     abbreviation: Optional[str] = None
 
-    # inherited from Stimela 1 -- used to handle paremeters inside containers?
-    # might need a re-think, but we can leave them in for now  
-    pattern: Optional[str] = MISSING
+    # # inherited from Stimela 1 -- used to handle paremeters inside containers?
+    # # might need a re-think, but we can leave them in for now  
+    # pattern: Optional[str] = None
 
     # arbitrary metadata associated with parameter
     metadata: Dict[str, Any] = EmptyDictDefault() 
