@@ -91,7 +91,9 @@ def _flatten_subsections(conf, depth=1):
             conf[f"{name}.{key}"] = value
 
 
-def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], include_path: Optional[str]=None):
+def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], 
+                        selfrefs: bool = True, 
+                        include_path: Optional[str]=None):
     """Resolves cross-references ("_use" fieds) in config object
 
     Parameters
@@ -106,6 +108,8 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
         If True, "_include" references will be processed
     use_sources : optional list of OmegaConf objects
         one or more config object(s) in which to look up "_use" references. None to disable
+    selfrefs (bool, optional): If False, "_use" references will only be looked up in existing config.
+        If True (default), they'll also be looked up within the loaded config.
     include_path (str, optional):
         if set, path to each config file will be included in the section as element 'include_path'
 
@@ -183,7 +187,8 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                         # load included file
                         incl_conf = load(filename, location=location, 
                                             name=f"{filename}, included from {name}",
-                                            includes=True, use_sources=[])
+                                            includes=True, 
+                                            use_sources=use_sources)
 
                         if include_path is not None:
                             incl_conf[include_path] = filename
@@ -192,7 +197,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                         if flatten:
                             _flatten_subsections(incl_conf, flatten)
 
-                        conf = OmegaConf.merge(conf, incl_conf)
+                        conf = OmegaConf.merge(incl_conf, conf)
 
             # handle _use entries
             if use_sources is not None:
@@ -213,7 +218,9 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                         # resolve references before flattening
                         base = _resolve_config_refs(base, name=name, 
                                                 location=f"{location}._use" if location else "_use", 
-                                                includes=includes, use_sources=use_sources, include_path=include_path)
+                                                includes=includes, 
+                                                use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
+                                                include_path=include_path)
                         if flatten:
                             _flatten_subsections(base, flatten)
                         base.merge_with(conf)
@@ -224,7 +231,9 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
             if isinstance(value, (DictConfig, ListConfig)):
                 value1 = _resolve_config_refs(value, name=name, 
                                                 location=f"{location}.{key}" if location else key, 
-                                                includes=includes, use_sources=use_sources, include_path=include_path)
+                                                includes=includes, 
+                                                use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
+                                                include_path=include_path)
                 # reassigning is expensive, so only do it if there was an actual change 
                 if value1 is not value:
                     conf[key] = value1
@@ -236,7 +245,9 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
             if isinstance(value, (DictConfig, ListConfig)):
                 value1 = _resolve_config_refs(value, name=name,
                                                 location=f"{location or ''}[{i}]", 
-                                                includes=includes, use_sources=use_sources, include_path=include_path)
+                                                includes=includes, 
+                                                use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
+                                                include_path=include_path)
                 if value1 is not value:
                     conf[i] = value
     return conf
@@ -257,7 +268,7 @@ def load(path: str, use_sources: Optional[List[DictConfig]] = [], name: Optional
         location (Optional[str]): location where this config is being loaded (if not at root level)
         includes (bool, optional): If True (default), "_include" references will be processed
         selfrefs (bool, optional): If False, "_use" references will only be looked up in existing config.
-            If True (default), they'll also be looked up within the new config.
+            If True (default), they'll also be looked up within the loaded config.
         include_path (str, optional):
             if set, path to each config file will be included in the section as element 'include_path'
 
@@ -266,33 +277,6 @@ def load(path: str, use_sources: Optional[List[DictConfig]] = [], name: Optional
     """
     subconf = OmegaConf.load(path)
     name = name or os.path.basename(path)
-
-    # includes = includes and subconf.get('_include')
-
-    # if includes:
-    #     del subconf['_include']
-
-    #     if isinstance(includes, str):
-    #         includes = [includes]
-    #     elif not isinstance(includes, (tuple, list, ListConfig)) or not all(isinstance(x, str) for x in includes):
-    #         raise ConfigurattError(f"config error in {name}: _include: must be a string or a list of strings")
-
-    #     # load includes
-    #     for incl in includes:
-    #         if os.path.isabs(incl):
-    #             candidates = [incl]
-    #         else:
-    #             candidates = [os.path.join(p, incl) for p in PATH]
-    #         for pathname in candidates:
-    #             if os.path.exists(pathname):
-    #                 incl_conf = OmegaConf.load(pathname)
-    #                 subconf = OmegaConf.merge(incl_conf, subconf)
-    #                 break
-    #             else:
-    #                 raise ConfigurattError(f"config error in {path}: _include: {incl} not found in {':'.join(PATH)}")
-
-    if use_sources is not None and selfrefs:
-        use_sources = list(use_sources) + [subconf]
 
     return _resolve_config_refs(subconf, location=location, name=name, includes=includes, use_sources=use_sources, include_path=include_path)
 
