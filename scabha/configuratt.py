@@ -68,27 +68,28 @@ def _lookup_name(name: str, *sources: List[Dict]):
     raise NameError(f"unknown key {name}")
 
 
-def _flatten_subsections(conf, depth=1):
+def _flatten_subsections(conf, depth: int = 1, sep: str = "__"):
     """Recursively flattens subsections in a DictConfig (modifying in place)
     A structure such as
         a:
             b: 1
             c: 2
     Becomes
-        a.b: 1
-        a.c: 2
+        a__b: 1
+        a__c: 2
 
     Args:
         conf (DictConfig): config to flatten
         depth (int):       depth to which to flatten. Default is 1 level.
+        sep (str):         separator to use, default is "__"
     """
     subsections = [(key, value) for key, value in conf.items() if isinstance(value, DictConfig)]
     for name, subsection in subsections:
         conf.pop(name)
         if depth > 1:
-            _flatten_subsections(subsection, depth-1)
+            _flatten_subsections(subsection, depth-1, sep)
         for key, value in subsection.items():
-            conf[f"{name}.{key}"] = value
+            conf[f"{name}{sep}{key}"] = value
 
 
 def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], 
@@ -131,8 +132,10 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
         updated = True
         recurse = 0
         flatten = conf.get("_flatten", 0)
-        if "_flatten" in conf:
-            del conf["_flatten"]
+        flatten_sep = conf.get("_flatten_sep", "__")
+        for key in "_flatten", "_flatten_sep":
+            if key in conf:
+                del conf[key]
         
         while updated:
             updated = False
@@ -195,7 +198,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
 
                         # flatten structure
                         if flatten:
-                            _flatten_subsections(incl_conf, flatten)
+                            _flatten_subsections(incl_conf, flatten, flatten_sep)
 
                         conf = OmegaConf.merge(incl_conf, conf)
 
@@ -222,7 +225,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
                                                 include_path=include_path)
                         if flatten:
-                            _flatten_subsections(base, flatten)
+                            _flatten_subsections(base, flatten, flatten_sep)
                         base.merge_with(conf)
                         conf = base
 

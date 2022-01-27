@@ -20,6 +20,7 @@ def test_subst():
     ns.foo.a = "{x.a}-{x.c}"
     ns.foo.b = "{foo.a}{{}}"
     ns.foo.c = "{bar.a}-{bar.x}-{bar.b}"
+#    ns.foo['d/e'] = "x"
 
     ns.bar.a = 1
     ns.bar.b = "{foo.b}"
@@ -38,7 +39,9 @@ def test_subst():
         assert context.evaluate("{bar.b}") == "1-3{}"
         assert context.evaluate("{bar.b1}") == "1-3{}"
         assert context.evaluate(["{x.a}-{x.c}", "{foo.a}{{}}"]) == ["1-3", "1-3{}"]
-        assert context.evaluate(["{x.a}-{x.c}", {'y': "{foo.a}{{}}"}]) == ["1-3", {'y': "1-3{}"}]
+        assert context.evaluate(["{x.a}-{x.c}", {'y': "{foo.a}{{}}"}]) == ["1-3", {'y': "1-3{}"}]\
+        
+#        print(context.evaluate("{foo.d/e}"))
 
     with substitutions_from(ns, raise_errors=False) as context:
         val = context.evaluate("{bar.c}")

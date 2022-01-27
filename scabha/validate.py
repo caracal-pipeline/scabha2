@@ -1,5 +1,5 @@
 import dataclasses
-import os, os.path, glob, yaml
+import os, os.path, glob, yaml, re
 from scabha import substitutions
 from typing import *
 
@@ -154,7 +154,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
                 raise SchemaError(f"invalid {mkname(name)}.dtype = {schema.dtype}")
 
             # sanitize name: dataclass won't take hyphens or periods
-            fldname = name.replace("-", "_").replace(".", "_")
+            fldname = re.sub("\W", "_", name)
             while fldname in field2name:
                 fldname += "_"
             field2name[fldname] = name
