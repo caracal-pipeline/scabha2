@@ -1,8 +1,8 @@
-import os.path, re, stat, itertools, logging, yaml, shlex
-from typing import Any, List, Dict, Optional, Union
+import os.path, re, stat, itertools, logging, yaml, shlex, importlib
+from typing import Any, List, Dict, Optional, OrderedDict, Union
 from enum import Enum
 from dataclasses import dataclass
-from omegaconf import MISSING
+from omegaconf import MISSING, ListConfig, DictConfig
 
 
 import scabha
@@ -21,6 +21,8 @@ Conditional = Optional[str]
 
 @dataclass 
 class ParameterPolicies(object):
+    # if true, parameter is passed as key=value, not command line option
+    key_value: Optional[bool] = None
     # if true, value is passed as a positional argument, not an option
     positional: Optional[bool] = None
     # if true, value is head-positional, i.e. passed *before* any options
@@ -37,6 +39,9 @@ class ParameterPolicies(object):
     skip: bool = False
     # if True, implicit parameters will be skipped automatically
     skip_implicits: bool = True
+
+    # if set, {}-substitutions on this paramater will not be done
+    disable_substitutions: Optional[bool] = None
 
     # how to pass boolean True values. None = pass option name alone, else pass option name + given value
     explicit_true: Optional[str] = None
@@ -91,8 +96,11 @@ class Parameter(object):
     # if True, parameter is required
     required: bool = False
 
-    # choices for an option-type parameter (should this be List[str]?)
+    # restrict value choices, i.e. making for an option-type parameter 
     choices:  Optional[List[Any]] = ()
+
+    # for List or Dict-type parameters, restict values of list elements or dict entries to a list of choices
+    element_choices: Optional[List[Any]] = None
 
     # default value
     default: Optional[Any] = None
@@ -113,11 +121,30 @@ class Parameter(object):
     # policies object, specifying a non-default way to handle this parameter
     policies: ParameterPolicies = ParameterPolicies()
 
-    # inherited from Stimela 1 -- used to handle paremeters inside containers?
-    # might need a re-think, but we can leave them in for now  
-    pattern: Optional[str] = MISSING
+    # metavar corresponding to this parameter. Used when constructing command-line interfaces
+    metavar: Optional[str] = None
+
+    # abbreviated option name for this parameter.  Used when constructing command-line interfaces
+    abbreviation: Optional[str] = None
+
+    # # inherited from Stimela 1 -- used to handle paremeters inside containers?
+    # # might need a re-think, but we can leave them in for now  
+    # pattern: Optional[str] = None
+
+    # arbitrary metadata associated with parameter
+    metadata: Dict[str, Any] = EmptyDictDefault() 
 
 
+    def __post_init__(self):
+        def natify(value):
+            # convert OmegaConf lists and dicts to native types
+            if type(value) in (list, ListConfig):
+                return [natify(x) for x in value]
+            elif type(value) in (dict, OrderedDict, DictConfig):
+                return OrderedDict([(name, natify(value)) for name, value in value.items()])
+            return value
+        self.default = natify(self.default)
+        self.choices = natify(self.choices)
 
 
 @dataclass
@@ -129,9 +156,10 @@ class Cargo(object):
     inputs: Dict[str, Parameter] = EmptyDictDefault()
     outputs: Dict[str, Parameter] = EmptyDictDefault()
     defaults: Dict[str, Any] = EmptyDictDefault()
-    backend: Optional[str] = None
 
     backend: Optional[str] = None                 # backend, if not default
+
+    dynamic_schema: Optional[str] = None          # function to call to augment inputs/outputs dynamically
 
     def __post_init__(self):
         self.fqname = self.fqname or self.name
@@ -144,6 +172,19 @@ class Cargo(object):
         self.name_ = re.sub(r'\W', '_', self.name or "")  # pausterized name
         # config and logger objects
         self.config = self.log = self.logopts = None
+        # resolve callable for dynamic schemas
+        self._dyn_schema = None
+        if self.dynamic_schema is not None:
+            if '.' not in self.dynamic_schema:
+                raise DefinitionError(f"{self.dynamic_schema}: module_name.function_name expected")
+            modulename, funcname = self.dynamic_schema.rsplit(".", 1)
+            try:
+                mod = importlib.import_module(modulename)
+            except ImportError as exc:
+                raise DefinitionError(f"can't import {modulename}: {exc}")
+            self._dyn_schema = getattr(mod, funcname, None)
+            if not callable(self._dyn_schema):
+                raise DefinitionError(f"{modulename}.{funcname} is not a valid callable")
 
     @property
     def inputs_outputs(self):
@@ -178,8 +219,15 @@ class Cargo(object):
             self.logopts = logopts
 
     def prevalidate(self, params: Optional[Dict[str, Any]], subst: Optional[SubstitutionNS]=None):
-        """Does pre-validation. No parameter substitution is done, but will check for missing params and such"""
+        """Does pre-validation. 
+        No parameter substitution is done, but will check for missing params and such.
+        A dynamic schema, if defined, is applied at this point."""
         self.finalize()
+        # update schemas, if dynamic schema is enabled
+        if self._dyn_schema:
+            self._inputs_outputs = None
+            self.inputs, self.outputs = self._dyn_schema(params, self.inputs, self.outputs)
+        # prevalidate parameters
         self.params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
                                           create_dirs=False, expand_globs=False, ignore_subst_errors=True)
@@ -257,11 +305,11 @@ class Cab(Cargo):
         CabValidationError: [description]
     """
     # if set, the cab is run in a container, and this is the image name
-    # if not set, commands are run nativelt
+    # if not set, commands are run by the native runner
     image: Optional[str] = None                   
 
     # command to run, inside the container or natively
-    command: str = MISSING                        # command to run (inside or outside the container)
+    command: str = MISSING
 
     # if set, activates this virtual environment first before running the command (not much sense doing this inside the container)
     virtual_env: Optional[str] = None
@@ -269,8 +317,6 @@ class Cab(Cargo):
     # controls how params are passed. args: via command line argument, yml: via a single yml string
     parameter_passing: ParameterPassingMechanism = ParameterPassingMechanism.args
 
-    # # not sure why this is here, let's retire (recipe defines "dirs")
-    # msdir: Optional[bool] = False
     # cab management and cleanup definitions
     management: CabManagement = CabManagement()
 
@@ -391,6 +437,10 @@ class Cab(Cargo):
                 return self.policies[policy]
 
         def stringify_argument(name, value, schema, option=None):
+            key_value = get_policy(schema, 'key_value')
+            if key_value:
+                return f"{name}={value}"
+
             if value is None:
                 return None
             if schema.dtype == "bool" and not value and get_policy(schema, 'explicit_false') is None:
@@ -478,6 +528,8 @@ class Cab(Cargo):
             if skip:
                 continue
 
+            key_value = get_policy(schema, 'key_value')
+
             # apply replacementss
             replacements = get_policy(schema, 'replace')
             if replacements:
@@ -487,8 +539,11 @@ class Cab(Cargo):
             option = (get_policy(schema, 'prefix') or "--") + (schema.nom_de_guerre or name)
 
             if schema.dtype == "bool":
-                explicit = get_policy(schema, 'explicit_true' if value else 'explicit_false')
-                args += [option, str(explicit)] if explicit is not None else ([option] if value else [])
+                if key_value:
+                    args += [f"{name}={value}"]
+                else:
+                    explicit = get_policy(schema, 'explicit_true' if value else 'explicit_false')
+                    args += [option, str(explicit)] if explicit is not None else ([option] if value else [])
             else:
                 value = stringify_argument(name, value, schema, option=option)
                 if type(value) is list:

@@ -1,5 +1,5 @@
 import dataclasses
-import os, os.path, glob, yaml
+import os, os.path, glob, yaml, re
 from scabha import substitutions
 from typing import *
 
@@ -114,6 +114,9 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
     if subst is not None:
         with substitutions_from(subst, raise_errors=False) as context:
             for key, value in inputs.items():
+                # do not substitute things that are not in the schema, or things for which substitutions are disabled
+                if key not in schemas or schemas[key].policies.disable_substitutions:
+                    continue
                 inputs[key] = context.evaluate(value, location=[fqname, key] if fqname else [key])
                 # ignore errors if requested
                 if ignore_subst_errors and context.errors:
@@ -150,8 +153,8 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
             except Exception as exc:
                 raise SchemaError(f"invalid {mkname(name)}.dtype = {schema.dtype}")
 
-            # sanitize name: datacalsss won't take hyphens
-            fldname = name.replace("-", "_")
+            # sanitize name: dataclass won't take hyphens or periods
+            fldname = re.sub("\W", "_", name)
             while fldname in field2name:
                 fldname += "_"
             field2name[fldname] = name
@@ -159,7 +162,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
 
             fields.append((fldname, dtype_impl))
             
-            # OmegaConf dicts/lists need to be converted to standard contrainers for pydantic to take them
+            # OmegaConf dicts/lists need to be converted to standard containers for pydantic to take them
             if isinstance(value, (ListConfig, DictConfig)):
                 inputs[name] = OmegaConf.to_container(value)
 
