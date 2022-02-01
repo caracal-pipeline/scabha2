@@ -235,8 +235,8 @@ class Cargo(object):
         ns.update(**{name: "MISSING" for name in self.missing_params})
         return SubstitutionNS(**ns)
 
+ParameterPassingMechanism = Enum("ParameterPassingMechanism", "args yaml", module=__name__)
 
-ParameterPassingMechanism = Enum("scabha.ParameterPassingMechanism", "args yaml")
 
 @dataclass
 class Cab(Cargo):
