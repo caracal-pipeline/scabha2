@@ -504,7 +504,6 @@ class Cab(Cargo):
                 positional_first = get_policy(schema, 'positional_head') 
                 positional = get_policy(schema, 'positional') or positional_first
                 skip = get_policy(schema, 'skip') or (schema.implicit and get_policy(schema, 'skip_implicits'))
-                print(skip, schema.implicit, get_policy(schema, 'skip_implicits'))
                 if positional:
                     if not skip:
                         pargs = pos_args[0 if positional_first else 1]
