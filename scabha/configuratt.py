@@ -92,7 +92,7 @@ def _flatten_subsections(conf, depth: int = 1, sep: str = "__"):
             conf[f"{name}{sep}{key}"] = value
 
 
-def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], 
+def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], 
                         selfrefs: bool = True, 
                         include_path: Optional[str]=None):
     """Resolves cross-references ("_use" fieds) in config object
@@ -101,6 +101,8 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
     ----------
     conf : OmegaConf object
         input configuration object
+    pathname : str
+        full path to this confiog (directory component of that is used for _includes)
     location : str
         location of this configuration section, used for messages
     name : str
@@ -180,7 +182,8 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                             filename = incl
                         # relative path -- scan PATH for candidates
                         else:
-                            candidates = [os.path.join(p, incl) for p in PATH]
+                            paths = [os.path.dirname(pathname)] + PATH
+                            candidates = [os.path.join(p, incl) for p in paths] 
                             for filename in candidates:
                                 if os.path.exists(filename):
                                     break
@@ -219,7 +222,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                         base = merge_sections[0].copy()
                         base.merge_with(*merge_sections[1:])
                         # resolve references before flattening
-                        base = _resolve_config_refs(base, name=name, 
+                        base = _resolve_config_refs(base, pathname=pathname, name=name, 
                                                 location=f"{location}._use" if location else "_use", 
                                                 includes=includes, 
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
@@ -232,7 +235,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
         # recurse into content
         for key, value in conf.items_ex(resolve=False):
             if isinstance(value, (DictConfig, ListConfig)):
-                value1 = _resolve_config_refs(value, name=name, 
+                value1 = _resolve_config_refs(value, pathname=pathname, name=name, 
                                                 location=f"{location}.{key}" if location else key, 
                                                 includes=includes, 
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
@@ -246,7 +249,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
         # recurse in
         for i, value in enumerate(conf._iter_ex(resolve=False)):
             if isinstance(value, (DictConfig, ListConfig)):
-                value1 = _resolve_config_refs(value, name=name,
+                value1 = _resolve_config_refs(value, pathname=pathname, name=name, 
                                                 location=f"{location or ''}[{i}]", 
                                                 includes=includes, 
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
@@ -281,7 +284,7 @@ def load(path: str, use_sources: Optional[List[DictConfig]] = [], name: Optional
     subconf = OmegaConf.load(path)
     name = name or os.path.basename(path)
 
-    return _resolve_config_refs(subconf, location=location, name=name, includes=includes, use_sources=use_sources, include_path=include_path)
+    return _resolve_config_refs(subconf, pathname=path, location=location, name=name, includes=includes, use_sources=use_sources, include_path=include_path)
 
 
 def load_nested(filelist: List[str], 
