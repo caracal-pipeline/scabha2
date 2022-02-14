@@ -191,7 +191,7 @@ def _resolve_config_refs(conf, location: str, name: str, includes: bool, use_sou
                         incl_conf = load(filename, location=location, 
                                             name=f"{filename}, included from {name}",
                                             includes=True, 
-                                            use_sources=use_sources)
+                                            use_sources=None)   # do not expand _use statements in included files, this is done below
 
                         if include_path is not None:
                             incl_conf[include_path] = filename
