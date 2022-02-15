@@ -38,7 +38,7 @@ class ParameterPolicies(object):
     # skip this parameter
     skip: bool = False
     # if True, implicit parameters will be skipped automatically
-    skip_implicits: bool = False
+    skip_implicits: Optional[bool] = None
 
     # if set, {}-substitutions on this paramater will not be done
     disable_substitutions: Optional[bool] = None
@@ -504,7 +504,6 @@ class Cab(Cargo):
                 positional_first = get_policy(schema, 'positional_head') 
                 positional = get_policy(schema, 'positional') or positional_first
                 skip = get_policy(schema, 'skip') or (schema.implicit and get_policy(schema, 'skip_implicits'))
-                print(skip, schema.implicit, get_policy(schema, 'skip_implicits'))
                 if positional:
                     if not skip:
                         pargs = pos_args[0 if positional_first else 1]
@@ -533,7 +532,10 @@ class Cab(Cargo):
             replacements = get_policy(schema, 'replace')
             if replacements:
                 for rep_from, rep_to in replacements.items():
-                    name = name.replace(rep_from, rep_to)
+                    try:
+                        name = name.replace(rep_from, rep_to)
+                    except TypeError:
+                        raise TypeError(f"Could not perform policy replacement for parameter [{name}] : {rep_from} => {rep_to}")
 
             option = (get_policy(schema, 'prefix') or "--") + (schema.nom_de_guerre or name)
 
