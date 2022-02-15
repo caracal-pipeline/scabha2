@@ -253,6 +253,8 @@ class Cargo(object):
         # add implicit inputs
         params = params.copy()
         self._add_implicits(params, self.inputs)
+        self._add_implicits(params, self.outputs)
+        
         # check inputs
         params.update(**validate_parameters(params, self.inputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely, 
@@ -270,7 +272,7 @@ class Cargo(object):
         """
         assert(self.finalized)
         # add implicit outputs
-        self._add_implicits(params, self.outputs)
+        #self._add_implicits(params, self.outputs)
         self.params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely))
         return self.params
