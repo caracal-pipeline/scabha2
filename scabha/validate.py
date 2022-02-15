@@ -9,15 +9,8 @@ import pydantic.dataclasses
 
 from .exceptions import Error, ParameterValidationError, SchemaError, SubstitutionErrorList
 from .substitutions import SubstitutionNS, substitutions_from
+from .types import File, Directory, MS
 
-class File(str):
-    pass
-
-class Directory(File):
-    pass
-
-class MS(Directory):
-    pass
 
 @dataclasses.dataclass
 class Unresolved(object):

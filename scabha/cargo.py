@@ -1,5 +1,6 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
-from typing import Any, List, Dict, Optional, OrderedDict, Union
+from typing import Any, List, Dict, Optional, Union
+from collections import OrderedDict
 from enum import Enum
 from dataclasses import dataclass
 from omegaconf import MISSING, ListConfig, DictConfig
@@ -38,7 +39,7 @@ class ParameterPolicies(object):
     # skip this parameter
     skip: bool = False
     # if True, implicit parameters will be skipped automatically
-    skip_implicits: bool = True
+    skip_implicits: Optional[bool] = None
 
     # if set, {}-substitutions on this paramater will not be done
     disable_substitutions: Optional[bool] = None
@@ -156,7 +157,6 @@ class Cargo(object):
     inputs: Dict[str, Parameter] = EmptyDictDefault()
     outputs: Dict[str, Parameter] = EmptyDictDefault()
     defaults: Dict[str, Any] = EmptyDictDefault()
-
     backend: Optional[str] = None                 # backend, if not default
 
     dynamic_schema: Optional[str] = None          # function to call to augment inputs/outputs dynamically
@@ -287,11 +287,10 @@ class Cargo(object):
         ns.update(**{name: "MISSING" for name in self.missing_params})
         return SubstitutionNS(**ns)
 
+ParameterPassingMechanism = Enum("ParameterPassingMechanism", "args yaml", module=__name__)
 
-ParameterPassingMechanism = Enum("scabha.ParameterPassingMechanism", "args yaml")
 
-
-@dataclass 
+@dataclass
 class Cab(Cargo):
     """Represents a cab i.e. an atomic task in a recipe.
     See dataclass fields below for documentation of fields.
@@ -534,7 +533,10 @@ class Cab(Cargo):
             replacements = get_policy(schema, 'replace')
             if replacements:
                 for rep_from, rep_to in replacements.items():
-                    name = name.replace(rep_from, rep_to)
+                    try:
+                        name = name.replace(rep_from, rep_to)
+                    except TypeError:
+                        raise TypeError(f"Could not perform policy replacement for parameter [{name}] : {rep_from} => {rep_to}")
 
             option = (get_policy(schema, 'prefix') or "--") + (schema.nom_de_guerre or name)
 
@@ -584,5 +586,15 @@ class Cab(Cargo):
 
 
 
+@dataclass
+class Batch:
+    scheduler: str = "slurm"
+    cpus: int = 4
+    mem: str = "128gb"
+    email: Optional[str] = None
 
+    def __init_cab__(self, cab: Cab, subst: Optional[Dict[str, Any]], log: Any=None):
+        self.cab = cab
+        self.log = log
+        self.args, self.venv = self.cab.build_command_line(subst)
 

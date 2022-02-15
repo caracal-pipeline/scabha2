@@ -1,0 +1,6 @@
+scabha/__pycache__
+.persistent_history
+scabha.egg-info/
+tests/__pycache__
+.vscode/launch.json
+.vscode/settings.json
