@@ -1,5 +1,6 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
-from typing import Any, List, Dict, Optional, OrderedDict, Union
+from typing import Any, List, Dict, Optional, Union
+from collections import OrderedDict
 from enum import Enum
 from dataclasses import dataclass
 from omegaconf import MISSING, ListConfig, DictConfig
