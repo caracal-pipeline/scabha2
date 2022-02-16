@@ -525,8 +525,12 @@ class Cab(Cargo):
                 raise RuntimeError(f"unknown parameter '{name}'")
             schema = self.inputs_outputs[name]
 
-            skip = get_policy(schema, 'skip') or (schema.implicit and get_policy(schema, 'skip_implicits'))
-            if skip:
+            # default behaviour for unset skip_implicits is True
+            skip_implicits = get_policy(schema, 'skip_implicits')
+            if skip_implicits is None:
+                skip_implicits = True
+
+            if get_policy(schema, 'skip') or (schema.implicit and skip_implicits):
                 continue
 
             key_value = get_policy(schema, 'key_value')
