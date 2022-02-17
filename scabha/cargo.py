@@ -22,6 +22,10 @@ Conditional = Optional[str]
 
 @dataclass 
 class ParameterPolicies(object):
+    """This class describes policies that determine how a Parameter is turned into
+    cab arguments. Most policies refer to how command-line arguments are formed up,
+    although some also apply to Python callable cabs.
+    """
     # if true, parameter is passed as key=value, not command line option
     key_value: Optional[bool] = None
     # if true, value is passed as a positional argument, not an option
@@ -69,6 +73,10 @@ class ParameterPolicies(object):
     format: Optional[str] = None
     format_list: Optional[List[str]] = None
     format_list_scalar: Optional[List[str]] = None
+
+    # for Python callable cabs: if set, then missing parameters are passed as None values
+    # if not set, missing parameters are not passed at all
+    pass_missing_as_none: Optional[bool] = None
 
 
 
@@ -373,6 +381,16 @@ class Cab(Cargo):
         lines += [f"  {name} = ???" for name in self.missing_params.keys()]
         return lines
 
+    def get_schema_policy(self, schema, policy, default=None):
+        """Resolves a policy setting. If the policy is set here, returns it. If None and set in the cab,
+        returns that. Else returns default value.
+        """
+        if getattr(schema.policies, policy) is not None:
+            return getattr(schema.policies, policy)
+        elif getattr(self.policies, policy) is not None:
+            return getattr(self.policies, policy)
+        else:
+            return default
 
     def build_command_line(self, subst: Optional[Dict[str, Any]] = None):
         from .substitutions import substitutions_from
@@ -431,11 +449,8 @@ class Cab(Cargo):
         if self.parameter_passing is ParameterPassingMechanism.yaml:
             return [yaml.dump(value_dict)]
 
-        def get_policy(schema, policy):
-            if schema.policies[policy] is not None:
-                return schema.policies[policy]
-            else:
-                return self.policies[policy]
+        def get_policy(schema: Parameter, policy: str, default=None):
+            return self.get_schema_policy(schema, policy, default)
 
         def stringify_argument(name, value, schema, option=None):
             key_value = get_policy(schema, 'key_value')
@@ -506,7 +521,7 @@ class Cab(Cargo):
             if name in value_dict:
                 positional_first = get_policy(schema, 'positional_head') 
                 positional = get_policy(schema, 'positional') or positional_first
-                skip = get_policy(schema, 'skip') or (schema.implicit and get_policy(schema, 'skip_implicits'))
+                skip = get_policy(schema, 'skip') or (schema.implicit and get_policy(schema, 'skip_implicits', True))
                 if positional:
                     if not skip:
                         pargs = pos_args[0 if positional_first else 1]
@@ -526,9 +541,7 @@ class Cab(Cargo):
             schema = self.inputs_outputs[name]
 
             # default behaviour for unset skip_implicits is True
-            skip_implicits = get_policy(schema, 'skip_implicits')
-            if skip_implicits is None:
-                skip_implicits = True
+            skip_implicits = get_policy(schema, 'skip_implicits', True)
 
             if get_policy(schema, 'skip') or (schema.implicit and skip_implicits):
                 continue
