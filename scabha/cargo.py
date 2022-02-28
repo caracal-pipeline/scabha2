@@ -447,7 +447,7 @@ class Cab(Cargo):
         value_dict = dict(**self.params)
 
         if self.parameter_passing is ParameterPassingMechanism.yaml:
-            return [yaml.dump(value_dict)]
+            return [yaml.safe_dump(value_dict)]
 
         def get_policy(schema: Parameter, policy: str, default=None):
             return self.get_schema_policy(schema, policy, default)
