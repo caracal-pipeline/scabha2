@@ -37,6 +37,13 @@ def validate_schema(schema: Dict[str, Any]):
     pass
 
 
+def is_file_type(dtype):
+    return dtype in (File, Directory, MS)
+
+
+def is_filelist_type(dtype):
+    return dtype in (List[File], List[Directory], List[MS])
+
 
 def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any], 
                         defaults: Optional[Dict[str, Any]] = None,
@@ -47,6 +54,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
                         check_exist=True,
                         expand_globs=True,
                         create_dirs=False,
+                        validate_files=True,
                         ignore_subst_errors=False
                         ) -> Dict[str, Any]:
     """Validates a dict of parameter values against a given schema 
@@ -165,7 +173,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
     pcls = pydantic.dataclasses.dataclass(dcls)
 
     # check Files etc. and expand globs
-    for name, value in inputs.items():
+    for name, value in list(inputs.items()):
         # get schema from those that need validation, skip if not in schemas
         schema = schemas.get(name)
         if schema is None:
@@ -175,8 +183,8 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
             continue
         dtype = dtypes[name]
 
-        is_file = dtype in (File, Directory, MS)
-        is_file_list = dtype in (List[File], List[Directory], List[MS])
+        is_file = is_file_type(dtype)
+        is_file_list = is_filelist_type(dtype)
 
         # must this file exist? Schema may force this check, otherwise follow the default check_exist policy
         must_exist = check_exist if schema.must_exist is None else schema.must_exist
@@ -191,11 +199,23 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
                         files = None
                 except Exception as exc:
                     files = None
-                # if not, fall back to treating it as a glob
+                # if not, see if it is a glob
                 if files is None:
-                    files = sorted(glob.glob(value)) if expand_globs else [value]
-            elif type(value) in (list, tuple):
-                files = value
+                    # if glob expansion is being deferred to later, insert it with a "#glob#" suffix (so that we
+                    # can distinguish the glob case from the explicit-single-value case)
+                    if "*" in value or "?" in value or "[" in value:
+                        if expand_globs:
+                            files = sorted(glob.glob(value)) 
+                        else:
+                            files = [value + "#glob#"]
+                    else:
+                        files = [value]
+            elif isinstance(value, (list, tuple)):
+                if len(value) == 1 and value[0].endswith("#glob#"):
+                    value = value[0][:-6]
+                    files = sorted(glob.glob(value)) 
+                else: 
+                    files = value
             else:
                 raise ParameterValidationError(f"'{mkname(name)}={value}': invalid type '{type(value)}'")
 
@@ -206,7 +226,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
                     inputs[name] = [value] if is_file_list else value
                     continue
 
-            # check for existence
+            # check for existence of all files in list, if needed
             if must_exist: 
                 not_exists = [f for f in files if not os.path.exists(f)]
                 if not_exists:
@@ -249,7 +269,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
     try:   
         validated = pcls(**{name2field[name]: value for name, value in inputs.items() if name in schemas and value is not None})
     except pydantic.ValidationError as exc:
-        errors = [f"'{'.'.join(err['loc'])}': {err['msg']}" for err in exc.errors()]
+        errors = [f"'{'.'.join(map(str, err['loc']))}': {err['msg']}" for err in exc.errors()]
         raise ParameterValidationError(', '.join(errors))
 
     validated = {field2name[fld]: value for fld, value in dataclasses.asdict(validated).items()}
