@@ -97,8 +97,8 @@ class Parameter(object):
     writable: bool = False
     # data type
     dtype: str = "str"
-    # for file-type parameters, specifies that the filename is implicitly set inside the step (i.e. not a free parameter)
-    implicit: Optional[str] = None
+    # specifies that the value is implicitly set inside the step (i.e. not a free parameter). Typically used with filenames 
+    implicit: Any = None
     # optonal list of arbitrary tags, used to group parameters
     tags: List[str] = EmptyListDefault()
 
@@ -171,11 +171,14 @@ class Cargo(object):
 
     def __post_init__(self):
         self.fqname = self.fqname or self.name
+        self.inputs = OrderedDict((name, Parameter(**schema)) for name, schema in self.inputs.items())
+        self.outputs = OrderedDict((name, Parameter(**schema)) for name, schema in self.outputs.items())
         for name in self.inputs.keys():
             if name in self.outputs:
                 raise DefinitionError(f"{name} appears in both inputs and outputs")
         self.params = {}
         self._inputs_outputs = None
+        self._implicit_params = set()   # marks implicitly set values
         # pausterized name
         self.name_ = re.sub(r'\W', '_', self.name or "")  # pausterized name
         # config and logger objects
@@ -235,6 +238,16 @@ class Cargo(object):
         if self._dyn_schema:
             self._inputs_outputs = None
             self.inputs, self.outputs = self._dyn_schema(params, self.inputs, self.outputs)
+        # add implicits, if resolved
+        for name, schema in self.inputs_outputs.items():
+            if schema.implicit is not None and type(schema.implicit) is not Unresolved:
+                if name in params and name not in self._implicit_params:
+                    raise ParameterValidationError(f"implicit parameter {name} was supplied explicitly")
+                if name in self.defaults:
+                   raise SchemaError(f"implicit parameter {name} also has a default value")
+                params[name] = schema.implicit
+                self._implicit_params.add(name)
+
         # prevalidate parameters
         self.params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
@@ -242,26 +255,12 @@ class Cargo(object):
 
         return self.params
 
-    def _add_implicits(self, params: Dict[str, Any], schemas: Dict[str, Parameter]):
-        # add implicit inputs
-        for name, schema in schemas.items():
-            if schema.implicit is not None:
-                if name in params:
-                    raise ParameterValidationError(f"implicit parameter {name} was supplied explicitly")
-                if name in self.defaults:
-                   raise SchemaError(f"implicit parameter {name} also has a default value")
-                params[name] = schema.implicit
-
     def validate_inputs(self, params: Dict[str, Any], subst: Optional[SubstitutionNS]=None, loosely=False):
         """Validates inputs.  
         If loosely is True, then doesn't check for required parameters, and doesn't check for files to exist etc.
         This is used when skipping a step.
         """
         assert(self.finalized)
-        # add implicit inputs
-        params = params.copy()
-        self._add_implicits(params, self.inputs)
-        self._add_implicits(params, self.outputs)
         
         # check inputs
         params.update(**validate_parameters(params, self.inputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
@@ -279,12 +278,9 @@ class Cargo(object):
         If loosely is True, then doesn't check for required parameters, and doesn't check for files to exist etc.
         """
         assert(self.finalized)
-        # add implicit outputs
-        #self._add_implicits(params, self.outputs)
         self.params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely))
         return self.params
-
 
     def update_parameter(self, name, value):
         assert(self.finalized)
