@@ -40,7 +40,6 @@ def validate_schema(schema: Dict[str, Any]):
 def is_file_type(dtype):
     return dtype in (File, Directory, MS)
 
-
 def is_filelist_type(dtype):
     return dtype in (List[File], List[Directory], List[MS])
 
@@ -127,8 +126,8 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
                 raise SubstitutionErrorList(*context.errors)
 
     # split inputs into unresolved substitutions, and proper inputs
-    unresolved = {name: value for name, value in inputs.items() if type(value) is Unresolved}
-    inputs = {name: value for name, value in inputs.items() if type(value) is not Unresolved}
+    unresolved = {name: value for name, value in inputs.items() if isinstance(value, Unresolved)}
+    inputs = {name: value for name, value in inputs.items() if not isinstance(value, Unresolved)}
 
     # check that required args are present
     if check_required:
@@ -201,21 +200,15 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
                     files = None
                 # if not, see if it is a glob
                 if files is None:
-                    # if glob expansion is being deferred to later, insert it with a "#glob#" suffix (so that we
-                    # can distinguish the glob case from the explicit-single-value case)
                     if "*" in value or "?" in value or "[" in value:
                         if expand_globs:
                             files = sorted(glob.glob(value)) 
                         else:
-                            files = [value + "#glob#"]
+                            files = [value]
                     else:
                         files = [value]
             elif isinstance(value, (list, tuple)):
-                if len(value) == 1 and value[0].endswith("#glob#"):
-                    value = value[0][:-6]
-                    files = sorted(glob.glob(value)) 
-                else: 
-                    files = value
+                files = value
             else:
                 raise ParameterValidationError(f"'{mkname(name)}={value}': invalid type '{type(value)}'")
 

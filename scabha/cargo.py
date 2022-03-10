@@ -1,4 +1,5 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
+from this import d
 from typing import Any, List, Dict, Optional, Union
 from collections import OrderedDict
 from enum import Enum
@@ -176,7 +177,6 @@ class Cargo(object):
         for name in self.inputs.keys():
             if name in self.outputs:
                 raise DefinitionError(f"{name} appears in both inputs and outputs")
-        self.params = {}
         self._inputs_outputs = None
         self._implicit_params = set()   # marks implicitly set values
         # pausterized name
@@ -204,18 +204,6 @@ class Cargo(object):
             self._inputs_outputs.update(**self.outputs)
         return self._inputs_outputs
     
-    @property
-    def invalid_params(self):
-        return [name for name, value in self.params.items() if type(value) is exceptions.Error]
-
-    @property
-    def missing_params(self):
-        return {name: schema for name, schema in self.inputs_outputs.items() if schema.required and name not in self.params}
-
-    @property
-    def unresolved_params(self):
-        return [name for name, value in self.params.items() if type(value) is Unresolved]
-
     @property 
     def finalized(self):
         return self.config is not None
@@ -248,12 +236,11 @@ class Cargo(object):
                 params[name] = schema.implicit
                 self._implicit_params.add(name)
 
-        # prevalidate parameters
-        self.params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
+        params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
-                                          create_dirs=False, expand_globs=False, ignore_subst_errors=True)
+                                          create_dirs=False, expand_globs=False, ignore_subst_errors=True)        
 
-        return self.params
+        return params
 
     def validate_inputs(self, params: Dict[str, Any], subst: Optional[SubstitutionNS]=None, loosely=False):
         """Validates inputs.  
@@ -270,27 +257,22 @@ class Cargo(object):
         params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname, 
                                                 check_unknowns=False, check_required=False, check_exist=False, 
                                                 create_dirs=not loosely, expand_globs=False))
-        self.params.update(**params)
-        return self.params
+        return params
 
     def validate_outputs(self, params: Dict[str, Any], subst: Optional[SubstitutionNS]=None, loosely=False):
         """Validates outputs. Parameter substitution is done. 
         If loosely is True, then doesn't check for required parameters, and doesn't check for files to exist etc.
         """
         assert(self.finalized)
-        self.params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
+        params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely))
-        return self.params
+        return params
 
-    def update_parameter(self, name, value):
-        assert(self.finalized)
-        self.params[name] = value
-
-    def make_substitition_namespace(self, ns=None):
+    def make_substitition_namespace(self, params, ns=None):
         from .substitutions import SubstitutionNS
         ns = {} if ns is None else ns.copy()
-        ns.update(**{name: str(value) for name, value in self.params.items()})
-        ns.update(**{name: "MISSING" for name in self.missing_params})
+        ns.update(**{name: str(value) for name, value in params.items()})
+        ns.update(**{name: "MISSING" for name in self.inputs_outputs if name not in params})
         return SubstitutionNS(**ns)
 
 ParameterPassingMechanism = Enum("ParameterPassingMechanism", "args yaml", module=__name__)
@@ -366,15 +348,15 @@ class Cab(Cargo):
         self._runtime_status = None
 
 
-    def summary(self, recursive=True):
+    def summary(self, params=None, recursive=True):
         lines = [f"cab {self.name}:"] 
-        for name, value in self.params.items():
-            # if type(value) is validate.Error:
-            #     lines.append(f"  {name} = ERR: {value}")
-            # else:
-            lines.append(f"  {name} = {value}")
-                
-        lines += [f"  {name} = ???" for name in self.missing_params.keys()]
+        if params is not None:
+            for name, value in params.items():
+                # if type(value) is validate.Error:
+                #     lines.append(f"  {name} = ERR: {value}")
+                # else:
+                lines.append(f"  {name} = {value}")
+            lines += [f"  {name} = ???" for name in self.inputs_outputs if name not in params]
         return lines
 
     def get_schema_policy(self, schema, policy, default=None):
@@ -388,7 +370,7 @@ class Cab(Cargo):
         else:
             return default
 
-    def build_command_line(self, subst: Optional[Dict[str, Any]] = None):
+    def build_command_line(self, params: Dict[str, Any], subst: Optional[Dict[str, Any]] = None):
         from .substitutions import substitutions_from
 
         with substitutions_from(subst, raise_errors=True) as context:
@@ -419,10 +401,10 @@ class Cab(Cargo):
 
         self.log.debug(f"command is {command}")
 
-        return ([command] + args + self.build_argument_list()), venv
+        return ([command] + args + self.build_argument_list(params)), venv
 
 
-    def build_argument_list(self):
+    def build_argument_list(self, params):
         """
         Converts command, and current dict of parameters, into a list of command-line arguments.
 
@@ -440,7 +422,7 @@ class Cab(Cargo):
 
         # collect parameters
 
-        value_dict = dict(**self.params)
+        value_dict = dict(**params)
 
         if self.parameter_passing is ParameterPassingMechanism.yaml:
             return [yaml.safe_dump(value_dict)]
@@ -608,8 +590,8 @@ class Batch:
     mem: str = "128gb"
     email: Optional[str] = None
 
-    def __init_cab__(self, cab: Cab, subst: Optional[Dict[str, Any]], log: Any=None):
+    def __init_cab__(self, cab: Cab, params: Dict[str, Any], subst: Optional[Dict[str, Any]], log: Any=None):
         self.cab = cab
         self.log = log
-        self.args, self.venv = self.cab.build_command_line(subst)
+        self.args, self.venv = self.cab.build_command_line(params, subst)
 
