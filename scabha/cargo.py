@@ -1,5 +1,4 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
-from this import d
 from typing import Any, List, Dict, Optional, Union
 from collections import OrderedDict
 from enum import Enum
