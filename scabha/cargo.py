@@ -136,10 +136,6 @@ class Parameter(object):
     # abbreviated option name for this parameter.  Used when constructing command-line interfaces
     abbreviation: Optional[str] = None
 
-    # # inherited from Stimela 1 -- used to handle paremeters inside containers?
-    # # might need a re-think, but we can leave them in for now  
-    # pattern: Optional[str] = None
-
     # arbitrary metadata associated with parameter
     metadata: Dict[str, Any] = EmptyDictDefault() 
 
@@ -347,7 +343,7 @@ class Cab(Cargo):
         self._runtime_status = None
 
 
-    def summary(self, params=None, recursive=True):
+    def summary(self, params=None, recursive=True, ignore_missing=False):
         lines = [f"cab {self.name}:"] 
         if params is not None:
             for name, value in params.items():
@@ -355,7 +351,8 @@ class Cab(Cargo):
                 #     lines.append(f"  {name} = ERR: {value}")
                 # else:
                 lines.append(f"  {name} = {value}")
-            lines += [f"  {name} = ???" for name in self.inputs_outputs if name not in params]
+            if not ignore_missing:
+                lines += [f"  {name} = ???" for name in self.inputs_outputs if name not in params]
         return lines
 
     def get_schema_policy(self, schema, policy, default=None):
