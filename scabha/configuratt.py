@@ -158,6 +158,7 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                         raise ConfigurattError(f"{errloc}: _include: must be a string or a list of strings")
 
                     # load includes
+                    accum_incl_conf = OmegaConf.create()
                     for incl in include_files:
                         if not incl:
                             raise ConfigurattError(f"{errloc}: empty _include specifier")
@@ -203,7 +204,11 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                         if flatten:
                             _flatten_subsections(incl_conf, flatten, flatten_sep)
 
-                        conf = OmegaConf.merge(incl_conf, conf)
+                        # accumulate included config so that later includes override earlier ones
+                        accum_incl_conf = OmegaConf.merge(accum_incl_conf, incl_conf)
+                    
+                    # merge: our section overrides anything that has been included
+                    conf = OmegaConf.merge(incl_conf, conf)
 
             # handle _use entries
             if use_sources is not None:
