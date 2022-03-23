@@ -41,7 +41,7 @@ class ParameterPolicies(object):
     prefix: Optional[str] = None
 
     # skip this parameter
-    skip: bool = False
+    skip: Optional[bool] = None
     # if True, implicit parameters will be skipped automatically
     skip_implicits: Optional[bool] = None
 

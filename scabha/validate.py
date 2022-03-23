@@ -151,7 +151,7 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
             try:
                 dtypes[name] = dtype_impl = eval(schema.dtype, globals())
             except Exception as exc:
-                raise SchemaError(f"invalid {mkname(name)}.dtype = {schema.dtype}")
+                raise SchemaError(f"invalid {mkname(name)}.dtype = {schema.dtype} ({exc})")
 
             # sanitize name: dataclass won't take hyphens or periods
             fldname = re.sub("\W", "_", name)
