@@ -208,7 +208,7 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                         accum_incl_conf = OmegaConf.merge(accum_incl_conf, incl_conf)
                     
                     # merge: our section overrides anything that has been included
-                    conf = OmegaConf.merge(incl_conf, conf)
+                    conf = OmegaConf.merge(accum_incl_conf, conf)
 
             # handle _use entries
             if use_sources is not None:
