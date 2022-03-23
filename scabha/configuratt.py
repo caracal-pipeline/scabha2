@@ -205,7 +205,7 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                             _flatten_subsections(incl_conf, flatten, flatten_sep)
 
                         # accumulate included config so that later includes override earlier ones
-                        accum_incl_conf = OmegaConf.merge(accum_incl_conf, incl_conf)
+                        accum_incl_conf = OmegaConf.unsafe_merge(accum_incl_conf, incl_conf)
                     
                     # merge: our section overrides anything that has been included
                     conf = OmegaConf.merge(accum_incl_conf, conf)

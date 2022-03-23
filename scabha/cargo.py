@@ -1,10 +1,15 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
+from pydantic import NoneIsAllowedError
+from unicodedata import category
 from typing import Any, List, Dict, Optional, Union
 from collections import OrderedDict
 from enum import Enum
 from dataclasses import dataclass
 from omegaconf import MISSING, ListConfig, DictConfig
 
+import rich.box
+import rich.markup
+from rich.table import Table
 
 import scabha
 from scabha import exceptions
@@ -130,6 +135,11 @@ class Parameter(object):
     # policies object, specifying a non-default way to handle this parameter
     policies: ParameterPolicies = ParameterPolicies()
 
+    # Parameter category, purely cosmetic, used for generating help and debug messages. Assigned automatically if None.
+    # Required parameters w/o a default are normally cat 0, required parameters with a default are cat 1,
+    # optional parameters are cat 2, and missing step parameters propagated into auto-aliases are cat 3. 
+    category: Optional[int] = None
+
     # metavar corresponding to this parameter. Used when constructing command-line interfaces
     metavar: Optional[str] = None
 
@@ -230,6 +240,16 @@ class Cargo(object):
                    raise SchemaError(f"implicit parameter {name} also has a default value")
                 params[name] = schema.implicit
                 self._implicit_params.add(name)
+        # assign unset categories
+        for name, schema in self.inputs_outputs:
+            if schema.category is None:
+                if schema.required:
+                    if schema.default is not None or name in self.defaults:
+                        schema.category = 1
+                    else:
+                        schema.category = 0
+                else:
+                    schema.category = 2
 
         params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
@@ -269,6 +289,28 @@ class Cargo(object):
         ns.update(**{name: str(value) for name, value in params.items()})
         ns.update(**{name: "MISSING" for name in self.inputs_outputs if name not in params})
         return SubstitutionNS(**ns)
+
+    def rich_help(self, tree):
+        """Generates help into a rich.tree.Tree object"""
+        # adds tables for inputs and outputs
+        for io, title in (self.inputs, "inputs"), (self.outputs, "outputs"):
+            subtree = tree.add(title)
+            table = Table.grid("", "", "", padding=(0,1)) # , show_header=False, show_lines=False, box=rich.box.SIMPLE)
+            for name, schema in io.items():
+                attrs = []
+                default = self.defaults.get(name, schema.default)
+                if schema.required:
+                    attrs.append("required")
+                if schema.implicit:
+                    attrs.append(f"implicit: {schema.implicit}")
+                if default is not None:
+                    attrs.append(f"default: {default}")
+                info = []
+                schema.info and info.append(rich.markup.escape(schema.info))
+                attrs and info.append(f"[dim]\[{rich.markup.escape(', '.join(attrs))}][/dim]")
+                table.add_row(f"[bold]{name}[/bold]", schema.dtype, " ".join(info))
+            subtree.add(table)            
+
 
 ParameterPassingMechanism = Enum("ParameterPassingMechanism", "args yaml", module=__name__)
 
@@ -354,6 +396,12 @@ class Cab(Cargo):
             if not ignore_missing:
                 lines += [f"  {name} = ???" for name in self.inputs_outputs if name not in params]
         return lines
+
+    def rich_help(self, tree):
+        tree.add(f"command: {self.command}")
+        tree.add(f"image: {self.image}")
+        tree.add(f"virtual environment: {self.virtual_env}")
+        Cargo.rich_help(self, tree)
 
     def get_schema_policy(self, schema, policy, default=None):
         """Resolves a policy setting. If the policy is set here, returns it. If None and set in the cab,
