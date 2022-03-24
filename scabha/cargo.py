@@ -8,6 +8,7 @@ from omegaconf import MISSING, ListConfig, DictConfig
 import rich.box
 import rich.markup
 from rich.table import Table
+from rich.markdown import Markdown
 
 import scabha
 from scabha import exceptions
@@ -295,6 +296,8 @@ class Cargo(object):
 
     def rich_help(self, tree, max_category=ParameterCategory.Optional):
         """Generates help into a rich.tree.Tree object"""
+        if self.info:
+            tree.add("Description:").add(Markdown(self.info))
         # adds tables for inputs and outputs
         for io, title in (self.inputs, "inputs"), (self.outputs, "outputs"):
             for cat in ParameterCategory:
@@ -320,7 +323,7 @@ class Cargo(object):
                     schema.info and info.append(rich.markup.escape(schema.info))
                     attrs and info.append(f"[dim]\[{rich.markup.escape(', '.join(attrs))}][/dim]")
                     table.add_row(f"[bold]{name}[/bold]", 
-                                  rich.markup.escape(str(schema.dtype)), 
+                                  f"[dim]{rich.markup.escape(str(schema.dtype))}[/dim]", 
                                   " ".join(info))
 
 
