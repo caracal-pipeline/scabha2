@@ -3,7 +3,7 @@ from pydantic import NoneIsAllowedError
 from unicodedata import category
 from typing import Any, List, Dict, Optional, Union
 from collections import OrderedDict
-from enum import Enum
+from enum import Enum, IntEnum
 from dataclasses import dataclass
 from omegaconf import MISSING, ListConfig, DictConfig
 
@@ -92,7 +92,10 @@ class CabManagement:        # defines common cab management behaviours
     wranglers: Optional[Dict[str, ListOrString]]   = EmptyDictDefault()   
 
 
-    
+# used to classify parameters. Purely for cosmetic and help purposes
+ParameterCategory = IntEnum("ParameterCategory", 
+                            dict(Required=0, Optional=1, Implicit=2, Obscure=3, Hidden=4),
+                            module=__name__)
 
 @dataclass
 class Parameter(object):
@@ -135,10 +138,10 @@ class Parameter(object):
     # policies object, specifying a non-default way to handle this parameter
     policies: ParameterPolicies = ParameterPolicies()
 
-    # Parameter category, purely cosmetic, used for generating help and debug messages. Assigned automatically if None.
-    # Required parameters w/o a default are normally cat 0, required parameters with a default are cat 1,
-    # optional parameters are cat 2, and missing step parameters propagated into auto-aliases are cat 3. 
-    category: Optional[int] = None
+    # Parameter category, purely cosmetic, used for generating help and debug messages. 
+    # Assigned automatically if None, but a schema may explicitly mark parameters as e.g. 
+    # "obscure" or "hidden"
+    category: Optional[ParameterCategory] = None
 
     # metavar corresponding to this parameter. Used when constructing command-line interfaces
     metavar: Optional[str] = None
@@ -148,7 +151,6 @@ class Parameter(object):
 
     # arbitrary metadata associated with parameter
     metadata: Dict[str, Any] = EmptyDictDefault() 
-
 
     def __post_init__(self):
         def natify(value):
@@ -161,6 +163,16 @@ class Parameter(object):
         self.default = natify(self.default)
         self.choices = natify(self.choices)
 
+    def get_category(self):
+        """Returns category of parameter, auto-setting it if not already preset"""
+        if self.category is None:
+            if self.required:
+                self.category = ParameterCategory.Required
+            elif self.implicit is not None:
+                self.category = ParameterCategory.Implicit
+            else:
+                self.category = ParameterCategory.Optional
+        return self.category
 
 @dataclass
 class Cargo(object):
@@ -242,14 +254,7 @@ class Cargo(object):
                 self._implicit_params.add(name)
         # assign unset categories
         for name, schema in self.inputs_outputs.items():
-            if schema.category is None:
-                if schema.required:
-                    if schema.default is not None or name in self.defaults:
-                        schema.category = 1
-                    else:
-                        schema.category = 0
-                else:
-                    schema.category = 2
+            schema.get_category()
 
         params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
@@ -290,26 +295,33 @@ class Cargo(object):
         ns.update(**{name: "MISSING" for name in self.inputs_outputs if name not in params})
         return SubstitutionNS(**ns)
 
-    def rich_help(self, tree):
+    def rich_help(self, tree, max_category=ParameterCategory.Optional):
         """Generates help into a rich.tree.Tree object"""
         # adds tables for inputs and outputs
         for io, title in (self.inputs, "inputs"), (self.outputs, "outputs"):
-            subtree = tree.add(title)
-            table = Table.grid("", "", "", padding=(0,1)) # , show_header=False, show_lines=False, box=rich.box.SIMPLE)
-            for name, schema in io.items():
-                attrs = []
-                default = self.defaults.get(name, schema.default)
-                if schema.required:
-                    attrs.append("required")
-                if schema.implicit:
-                    attrs.append(f"implicit: {schema.implicit}")
-                if default is not None:
-                    attrs.append(f"default: {default}")
-                info = []
-                schema.info and info.append(rich.markup.escape(schema.info))
-                attrs and info.append(f"[dim]\[{rich.markup.escape(', '.join(attrs))}][/dim]")
-                table.add_row(f"[bold]{name}[/bold]", schema.dtype, " ".join(info))
-            subtree.add(table)            
+            for cat in ParameterCategory:
+                schemas = [(name, schema) for name, schema in io.items() if schema.get_category() == cat]
+                if not schemas:
+                    continue
+                if cat > max_category:
+                    subtree = tree.add(f"[dim]{cat.name} {title}: omitting {len(schemas)}[/dim]")
+                    continue
+                subtree = tree.add(f"{cat.name} {title}:")
+                table = Table.grid("", "", "", padding=(0,2)) # , show_header=False, show_lines=False, box=rich.box.SIMPLE)
+                subtree.add(table)            
+                for name, schema in schemas: 
+                    attrs = []
+                    default = self.defaults.get(name, schema.default)
+                    if schema.implicit:
+                        attrs.append(f"implicit: {schema.implicit}")
+                    if default is not None:
+                        attrs.append(f"default: {default}")
+                    if schema.choices:
+                        attrs.append(f"choices: {', '.join(schema.choices)}")
+                    info = []
+                    schema.info and info.append(rich.markup.escape(schema.info))
+                    attrs and info.append(f"[dim]\[{rich.markup.escape(', '.join(attrs))}][/dim]")
+                    table.add_row(f"[bold]{name}[/bold]", schema.dtype, " ".join(info))
 
 
 ParameterPassingMechanism = Enum("ParameterPassingMechanism", "args yaml", module=__name__)
@@ -397,11 +409,13 @@ class Cab(Cargo):
                 lines += [f"  {name} = ???" for name in self.inputs_outputs if name not in params]
         return lines
 
-    def rich_help(self, tree):
+    def rich_help(self, tree, max_category=ParameterCategory.Optional):
         tree.add(f"command: {self.command}")
-        tree.add(f"image: {self.image}")
-        tree.add(f"virtual environment: {self.virtual_env}")
-        Cargo.rich_help(self, tree)
+        if self.image:
+            tree.add(f"image: {self.image}")
+        if self.virtual_env:
+            tree.add(f"virtual environment: {self.virtual_env}")
+        Cargo.rich_help(self, tree, max_category=max_category)
 
     def get_schema_policy(self, schema, policy, default=None):
         """Resolves a policy setting. If the policy is set here, returns it. If None and set in the cab,
