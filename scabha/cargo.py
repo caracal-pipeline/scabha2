@@ -241,7 +241,7 @@ class Cargo(object):
                 params[name] = schema.implicit
                 self._implicit_params.add(name)
         # assign unset categories
-        for name, schema in self.inputs_outputs:
+        for name, schema in self.inputs_outputs.items():
             if schema.category is None:
                 if schema.required:
                     if schema.default is not None or name in self.defaults:
