@@ -321,7 +321,9 @@ class Cargo(object):
                     info = []
                     schema.info and info.append(rich.markup.escape(schema.info))
                     attrs and info.append(f"[dim]\[{rich.markup.escape(', '.join(attrs))}][/dim]")
-                    table.add_row(f"[bold]{name}[/bold]", schema.dtype, " ".join(info))
+                    table.add_row(f"[bold]{name}[/bold]", 
+                                  rich.markup.escape(str(schema.dtype)), 
+                                  " ".join(info))
 
 
 ParameterPassingMechanism = Enum("ParameterPassingMechanism", "args yaml", module=__name__)
