@@ -1,6 +1,4 @@
 import os.path, re, stat, itertools, logging, yaml, shlex, importlib
-from pydantic import NoneIsAllowedError
-from unicodedata import category
 from typing import Any, List, Dict, Optional, Union
 from collections import OrderedDict
 from enum import Enum, IntEnum
@@ -314,7 +312,7 @@ class Cargo(object):
                     default = self.defaults.get(name, schema.default)
                     if schema.implicit:
                         attrs.append(f"implicit: {schema.implicit}")
-                    if default is not None:
+                    if default is not None and not isinstance(default, Unresolved):
                         attrs.append(f"default: {default}")
                     if schema.choices:
                         attrs.append(f"choices: {', '.join(schema.choices)}")
