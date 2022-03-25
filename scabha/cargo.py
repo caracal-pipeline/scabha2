@@ -408,8 +408,8 @@ class Cab(Cargo):
                 #     lines.append(f"  {name} = ERR: {value}")
                 # else:
                 lines.append(f"  {name} = {value}")
-            if not ignore_missing:
-                lines += [f"  {name} = ???" for name in self.inputs_outputs if name not in params]
+            lines += [f"  {name} = ???" for name, schema in self.inputs_outputs.items()
+                        if name not in params and (not ignore_missing or schema.required)]
         return lines
 
     def rich_help(self, tree, max_category=ParameterCategory.Optional):
