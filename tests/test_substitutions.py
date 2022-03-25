@@ -1,7 +1,7 @@
 import pytest
 import traceback
 from scabha.exceptions import SubstitutionError
-from scabha.substitutions import CyclicSubstitutionError, SubstitutionNS, substitutions_from, forgiving_substitutions_from
+from scabha.substitutions import *
 from omegaconf import OmegaConf 
 
 def test_subst():
@@ -16,6 +16,8 @@ def test_subst():
     bar = SubstitutionNS()
     ns._add_("x", x, nosubst=True)
     ns._add_("bar", bar)
+    
+    ns.foo.zero = 0
 
     ns.foo.a = "{x.a}-{x.c}"
     ns.foo.b = "{foo.a}{{}}"
@@ -92,12 +94,67 @@ def test_subst():
 
     try:
         context.evaluate("xxx")
-        raise RuntimeError("exception not raised out of context")
+        raise RuntimeError("exception should have been raised due to invalid substitution")
     except SubstitutionError as exc:
         print(f"Error as expected ({exc})")
 
+    # test <<-substitutions
     
+    with substitutions_from(ns) as context:
+        p = OmegaConf.create()
+        
+        p.a  = "<< foo.a"
+        p.b  = "<<foo.b" 
+        p.c  = "<<foo.x?"
+        
+        p.d = "<< foo.a ?<<bar.a :<<bar.b !<<foo.c"
+        p.e = "<< foo.zero ?<<bar.a :BB !<<foo.c"
+        p.f = "<< foo.x? ?<<bar.a :<<bar.b !<<foo.c"
+        p.g = "<< bar.a ?<<bar.b"
+        p.h = "<< foo.zero :<<foo.c"
+        p.i = "<< food?.x ?<<bar.a :<<bar.b !<<foo.c"
 
+        try:
+            errors = perform_ll_substitutions(ns, p, raise_exceptions=False)
+            assert not errors
+            assert p.a == context.evaluate("{foo.a}")
+            assert p.b == context.evaluate("{foo.b}")
+            assert 'c' not in p
+            assert p.d == 1  # not "{bar.a}" because that's a string!
+            assert p.e == "BB"
+            assert p.f == context.evaluate("{foo.c}")
+            assert p.g == context.evaluate("{bar.b}")
+            assert p.h == context.evaluate("{foo.c}")
+            assert p.i == context.evaluate("{foo.c}")
+        except Exception as exc:
+            print("Unexpected exception!")
+            traceback.print_exc()
+            raise
+        
+        # now some delibrate errors
+        p = OmegaConf.create()
+        p.a  = "<< foo.missing :bar.b ?foo.c"   # error
+        p.b  = "<< foo.missing? :bar.b ?foo.c"  # no error, leave unset
+        p.c  = "<< foo.x?"              # no error, leave unset 
+        p.d  = "<< foo.x !foo.c"        # no error, ? is implicit due to !component
+        p.e  = "<< missing?.x"          # no error, leave unset
+        p.f  = "<< foo?.x !foo.c"       # error! foo is allowed to be missing, but not x
+        errors = perform_ll_substitutions(ns, p, raise_exceptions=False)
+        assert len(errors) == 2
+        assert "b" not in p
+        assert "c" not in p
+        assert "e" not in p
+        
+        # and deliberate exceptions
+        p = OmegaConf.create()
+        p.a  = "<< foo.missing :bar.b ?foo.c"
+        try:
+            perform_ll_substitutions(ns, p, raise_exceptions=True)
+            raise RuntimeError("exception should have been raised due to invalid substitution")
+        except SubstitutionError as exc:
+            print(f"Error as expected ({exc})")
+            
+        
 
 if __name__ == "__main__":
     test_subst()

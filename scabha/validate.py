@@ -8,7 +8,7 @@ import pydantic
 import pydantic.dataclasses
 
 from .exceptions import Error, ParameterValidationError, SchemaError, SubstitutionError, SubstitutionErrorList
-from .substitutions import SubstitutionNS, substitutions_from
+from .substitutions import SubstitutionNS, substitutions_from, perform_ll_substitutions
 from .types import File, Directory, MS
 
 
@@ -101,42 +101,11 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
     
     inputs = params.copy()
     
-    # perform @-substitutions
+    # perform <<-substitutions
     if subst is not None:
-        errors = []
-        for name, value in list(inputs.items()):
-            if type(value) is str:
-                # << is escape character -- maps back to single <
-                if value.startswith("<<"):
-                    inputs[name] = value[1:]
-                elif value.startswith("<"):
-                    target = value[1:]
-                    if not target:
-                        errors.append(SubstitutionError(f"{name} = {inputs[name]}: has no <-substitution target"))
-                        continue
-                    keys = target.split('.')
-                    # look up keys in substitution dict recursively
-                    # a ?-lookup is optional
-                    target_value = subst
-                    while keys:
-                        key = keys.pop(0)
-                        optional = key.startswith('?')
-                        if optional:
-                            key = key[1:]
-                        target_value = target_value.get(key, SubstitutionError)
-                        if target_value is SubstitutionError:
-                            break
-                    # if a lookup has failed -- for optional lookups, delete the parameter, otherwise
-                    # report error
-                    if target_value is SubstitutionError:
-                        if optional:
-                            del inputs[name]
-                        else:
-                            errors.append(SubstitutionError(f"{name} = {inputs[name]}: lookup failed for '{key}'"))
-                        continue
-                    # success!
-                    print(target_value, type(target_value))
-                    inputs[name] = target_value
+        errors = perform_ll_substitutions(subst, inputs)
+        if errors:
+            raise SubstitutionErrorList(*context.errors)
 
     # add missing defaults 
     defaults = defaults or {}
