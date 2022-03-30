@@ -330,7 +330,7 @@ class Evaluator(object):
                 elif new_value is not value and new_value != value:
                     params[name] = new_value
                     if corresponding_ns:
-                        corresponding_ns[name] = str(new_value)
+                        corresponding_ns[name] = new_value
         return params
 
 if __name__ == "__main__":
