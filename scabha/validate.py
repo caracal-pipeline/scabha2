@@ -37,6 +37,28 @@ def is_filelist_type(dtype):
     return dtype in (List[File], List[Directory], List[MS])
 
 
+def evaluate_and_substitute(inputs: Dict[str, Any], 
+                            subst: SubstitutionNS, 
+                            corresponding_ns: SubstitutionNS,
+                            defaults: Dict[str, Any] = {},
+                            ignore_subst_errors: bool = False, 
+                            location: List[str] = []):
+    with substitutions_from(subst, raise_errors=True) as context:
+        evaltor = Evaluator(subst, context, location=location)
+        inputs = evaltor.evaluate_dict(inputs, corresponding_ns=corresponding_ns, defaults=defaults,
+                                        raise_substitution_errors=False)
+        # collect errors
+        if not ignore_subst_errors:
+            errors = []
+            for value in inputs.values():
+                if type(value) is Unresolved:
+                    errors += value.errors
+            # check for substitution errors
+            if errors:
+                raise SubstitutionErrorList(*errors)
+    return inputs
+
+
 def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any], 
                         defaults: Optional[Dict[str, Any]] = None,
                         subst: Optional[SubstitutionNS] = None,
@@ -101,20 +123,8 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
 
     # perform substitution
     if subst is not None:
-        with substitutions_from(subst, raise_errors=True) as context:
-            evaltor = Evaluator(subst, context, location=[fqname])
-            corresponding_ns = subst.current if 'current' in subst else None
-            inputs = evaltor.evaluate_dict(inputs, corresponding_ns=corresponding_ns, defaults=all_defaults,
-                                    raise_substitution_errors=False)
-            # collect errors
-            if not ignore_subst_errors:
-                errors = []
-                for value in inputs.values():
-                    if type(value) is Unresolved:
-                        errors += value.errors
-                # check for substitution errors
-                if errors:
-                    raise SubstitutionErrorList(*errors)
+        inputs = evaluate_and_substitute(inputs, subst, subst.current, defaults=all_defaults, 
+                                        ignore_subst_errors=ignore_subst_errors, location=[fqname])
 
     # split inputs into unresolved substitutions, and proper inputs
     unresolved = {name: value for name, value in inputs.items() if isinstance(value, Unresolved)}

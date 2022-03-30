@@ -60,4 +60,4 @@ class CyclicSubstitutionError(SubstitutionError):
 class SubstitutionErrorList(ScabhaBaseException):
     def __init__(self, *errors):
         self.errors = errors
-        super().__init__(f"{len(errors)} substitution error(s)")
+        super().__init__(f"{len(errors)} substitution error(s): {'; '.join(map(str, errors))}")

@@ -79,7 +79,7 @@ def construct_parser():
             (Keyword("or")("op2"), 2, opAssoc.LEFT)
         ]
     )
-    infix = infix_notation(function | atomic_value, operators)
+    infix = infix_notation(function | atomic_value, operators)("subexpression")
 
     expr <<= function | infix
 
@@ -265,6 +265,7 @@ class Evaluator(object):
             return self._BINARY_OPERATORS[parse_result.op2](parse_result[0], parse_result[2])
 
         # else lookup processing method based on name
+        assert parse_result._name is not None
         method = parse_result._name
         if not hasattr(self, method):
             raise ParserError(f"{'.'.join(self.location)}: don't know how to deal with an element of type '{method}'")

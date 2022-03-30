@@ -287,12 +287,9 @@ class Cargo(object):
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely))
         return params
 
-    def make_substitition_namespace(self, params, ns=None):
+    def make_substitition_namespace(self, params={}):
         from .substitutions import SubstitutionNS
-        ns = {} if ns is None else ns.copy()
-        ns.update(**{name: str(value) for name, value in params.items()})
-        # ns.update(**{name: "MISSING" for name in self.inputs_outputs if name not in params})
-        return SubstitutionNS(**ns)
+        return SubstitutionNS(**params)
 
     def rich_help(self, tree, max_category=ParameterCategory.Optional):
         """Generates help into a rich.tree.Tree object"""
