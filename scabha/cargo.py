@@ -257,7 +257,7 @@ class Cargo(object):
 
         params = validate_parameters(params, self.inputs_outputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                           check_unknowns=True, check_required=False, check_exist=False,
-                                          create_dirs=False, expand_globs=False, ignore_subst_errors=True)        
+                                          create_dirs=False, ignore_subst_errors=True)        
 
         return params
 
@@ -275,7 +275,7 @@ class Cargo(object):
         # check outputs
         params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname, 
                                                 check_unknowns=False, check_required=False, check_exist=False, 
-                                                create_dirs=not loosely, expand_globs=False))
+                                                create_dirs=not loosely))
         return params
 
     def validate_outputs(self, params: Dict[str, Any], subst: Optional[SubstitutionNS]=None, loosely=False):
@@ -287,12 +287,9 @@ class Cargo(object):
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely))
         return params
 
-    def make_substitition_namespace(self, params, ns=None):
+    def make_substitition_namespace(self, params={}):
         from .substitutions import SubstitutionNS
-        ns = {} if ns is None else ns.copy()
-        ns.update(**{name: str(value) for name, value in params.items()})
-        ns.update(**{name: "MISSING" for name in self.inputs_outputs if name not in params})
-        return SubstitutionNS(**ns)
+        return SubstitutionNS(**params)
 
     def rich_help(self, tree, max_category=ParameterCategory.Optional):
         """Generates help into a rich.tree.Tree object"""

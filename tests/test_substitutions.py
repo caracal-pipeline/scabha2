@@ -3,6 +3,8 @@ import traceback
 from scabha.exceptions import SubstitutionError
 from scabha.substitutions import *
 from omegaconf import OmegaConf 
+from scabha.evaluator import Evaluator
+from scabha.validate import Unresolved
 
 def test_subst():
 
@@ -98,64 +100,118 @@ def test_subst():
     except SubstitutionError as exc:
         print(f"Error as expected ({exc})")
 
-    # test <<-substitutions
-    
-    with substitutions_from(ns) as context:
-        p = OmegaConf.create()
-        
-        p.a  = "<< foo.a"
-        p.b  = "<<foo.b" 
-        p.c  = "<<foo.x?"
-        
-        p.d = "<< foo.a ?<<bar.a :<<bar.b !<<foo.c"
-        p.e = "<< foo.zero ?<<bar.a :BB !<<foo.c"
-        p.f = "<< foo.x? ?<<bar.a :<<bar.b !<<foo.c"
-        p.g = "<< bar.a ?<<bar.b"
-        p.h = "<< foo.zero :<<foo.c"
-        p.i = "<< food?.x ?<<bar.a :<<bar.b !<<foo.c"
 
-        try:
-            errors = perform_ll_substitutions(ns, p, raise_exceptions=False)
-            assert not errors
-            assert p.a == context.evaluate("{foo.a}")
-            assert p.b == context.evaluate("{foo.b}")
-            assert 'c' not in p
-            assert p.d == 1  # not "{bar.a}" because that's a string!
-            assert p.e == "BB"
-            assert p.f == context.evaluate("{foo.c}")
-            assert p.g == context.evaluate("{bar.b}")
-            assert p.h == context.evaluate("{foo.c}")
-            assert p.i == context.evaluate("{foo.c}")
-        except Exception as exc:
-            print("Unexpected exception!")
-            traceback.print_exc()
-            raise
+    # # test <<-substitutions
+    
+    # with substitutions_from(ns) as context:
+    #     p = OmegaConf.create()
         
-        # now some delibrate errors
-        p = OmegaConf.create()
-        p.a  = "<< foo.missing :bar.b ?foo.c"   # error
-        p.b  = "<< foo.missing? :bar.b ?foo.c"  # no error, leave unset
-        p.c  = "<< foo.x?"              # no error, leave unset 
-        p.d  = "<< foo.x !foo.c"        # no error, ? is implicit due to !component
-        p.e  = "<< missing?.x"          # no error, leave unset
-        p.f  = "<< foo?.x !foo.c"       # error! foo is allowed to be missing, but not x
-        errors = perform_ll_substitutions(ns, p, raise_exceptions=False)
-        assert len(errors) == 2
-        assert "b" not in p
-        assert "c" not in p
-        assert "e" not in p
+    #     p.a  = "<< foo.a"
+    #     p.b  = "<<foo.b" 
+    #     p.c  = "<<foo.x?"
         
-        # and deliberate exceptions
-        p = OmegaConf.create()
-        p.a  = "<< foo.missing :bar.b ?foo.c"
-        try:
-            perform_ll_substitutions(ns, p, raise_exceptions=True)
-            raise RuntimeError("exception should have been raised due to invalid substitution")
-        except SubstitutionError as exc:
-            print(f"Error as expected ({exc})")
+    #     p.d = "<< foo.a ?<<bar.a :<<bar.b !<<foo.c"
+    #     p.e = "<< foo.zero ?<<bar.a :BB !<<foo.c"
+    #     p.f = "<< foo.x? ?<<bar.a :<<bar.b !<<foo.c"
+    #     p.g = "<< bar.a ?<<bar.b"
+    #     p.h = "<< foo.zero :<<foo.c"
+    #     p.i = "<< food?.x ?<<bar.a :<<bar.b !<<foo.c"
+
+    #     try:
+    #         errors = perform_ll_substitutions(ns, p, raise_exceptions=False)
+    #         assert not errors
+    #         assert p.a == context.evaluate("{foo.a}")
+    #         assert p.b == context.evaluate("{foo.b}")
+    #         assert 'c' not in p
+    #         assert p.d == 1  # not "{bar.a}" because that's a string!
+    #         assert p.e == "BB"
+    #         assert p.f == context.evaluate("{foo.c}")
+    #         assert p.g == context.evaluate("{bar.b}")
+    #         assert p.h == context.evaluate("{foo.c}")
+    #         assert p.i == context.evaluate("{foo.c}")
+    #     except Exception as exc:
+    #         print("Unexpected exception!")
+    #         traceback.print_exc()
+    #         raise
+        
+    #     # now some delibrate errors
+    #     p = OmegaConf.create()
+    #     p.a  = "<< foo.missing :bar.b ?foo.c"   # error
+    #     p.b  = "<< foo.missing? :bar.b ?foo.c"  # no error, leave unset
+    #     p.c  = "<< foo.x?"              # no error, leave unset 
+    #     p.d  = "<< foo.x !foo.c"        # no error, ? is implicit due to !component
+    #     p.e  = "<< missing?.x"          # no error, leave unset
+    #     p.f  = "<< foo?.x !foo.c"       # error! foo is allowed to be missing, but not x
+    #     errors = perform_ll_substitutions(ns, p, raise_exceptions=False)
+    #     assert len(errors) == 2
+    #     assert "b" not in p
+    #     assert "c" not in p
+    #     assert "e" not in p
+        
+    #     # and deliberate exceptions
+    #     p = OmegaConf.create()
+    #     p.a  = "<< foo.missing :bar.b ?foo.c"
+    #     try:
+    #         perform_ll_substitutions(ns, p, raise_exceptions=True)
+    #         raise RuntimeError("exception should have been raised due to invalid substitution")
+    #     except SubstitutionError as exc:
+    #         print(f"Error as expected ({exc})")
             
         
+def test_formulas():
+
+    ns = SubstitutionNS(previous={})
+
+    ns.previous.x = 1
+    ns.previous.x0 = 0
+    ns.previous.y = 'y'
+    ns.previous.z = 'z'
+
+    current = OrderedDict(
+        a = 'a{previous.x}',
+        b = '==escaped',
+        c = '=previous.x',
+        d = '=IFSET(previous.x)',
+        e = '=IFSET(previous.x,"z",2)',
+        f = '=IFSET(previous.xx)',
+        g = '=IFSET(previous.xx,,2)',
+        h = "=IF(previous.x, True, 'False')", 
+        i = "=IF(previous.x0, True, 'False')",
+        j = "=IF(previous.xx, True, 'False', 'UNSET')",
+        k = "=current.j",
+        l = "=IFSET(current.f)",
+        m = "=IF((previous.x+1)*previous.x == 2, previous.x == 1, previous.y == 0)",
+        n = "=IF((-previous.x+1)*(previous.x) == 0, previous.x == 1, previous.y < 0)",
+        o = '=previous.zz',
+        p = 'x{previous.zz}'
+    )
+    ns._add_("current", current)
+    
+    with substitutions_from(ns, raise_errors=True) as context:
+        evaltor = Evaluator(ns, context, location=['top'])
+
+        results = evaltor.evaluate_dict(current, corresponding_ns=ns.current, raise_substitution_errors=False, verbose=True)
+
+        r = results
+
+        assert r['a'] == "a1"
+        assert r['b'] == "=escaped"
+        assert r['c'] == 1
+        assert r['d'] == 1 
+        assert r['e'] == "z"
+        assert 'f' not in r 
+        assert r['g'] == 2
+        assert r['h'] == True
+        assert r['i'] == 'False'
+        assert r['j'] == "UNSET"
+        assert r['k'] == r['j']
+        assert 'l' not in r
+        assert r['m'] == True
+        assert r['n'] == True
+        assert type(r['o']) is Unresolved
+        assert type(r['p']) is Unresolved
+
 
 if __name__ == "__main__":
     test_subst()
-
+    test_formulas()
