@@ -1,13 +1,8 @@
-# -*- coding: future_fstrings -*-
 import os
 import logging
-import sys
-import yaml
 import subprocess
-from collections import OrderedDict
 
-from .logging_utils import ConsoleColors, SelectiveFormatter, ColorizingFormatter, MultiplexingHandler
-from .proc_utils import prun, prun_multi, clear_junk, parse_parameters
+from .logging_utils import ConsoleColors, ColorizingFormatter, MultiplexingHandler
 from .  import exceptions
 
 

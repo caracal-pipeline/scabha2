@@ -1,9 +1,6 @@
-# -*- coding: future_fstrings -*-
-import subprocess
-import shlex
-import glob
-import os, os.path, stat
-import shutil
+import os
+import os.path
+import stat
 
 def which(binary, extra_paths=None):
     """Equivalent of shell which command. Returns full path to executable, or None if not found"""
