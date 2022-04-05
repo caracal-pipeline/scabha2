@@ -1,23 +1,20 @@
 #!/usr/bin/env python
-import os
-import sys
 from setuptools import setup
-import glob
 
 requirements = ["pyyaml",
                 "nose>=1.3.7",
-                "future-fstrings",
                 "omegaconf",
                 "click",
                 "pydantic",
                 "ruamel.yaml",
                 "pyparsing",
                 "pytest",
+                "rich"
                 ],
 
 PACKAGE_NAME = "scabha"
 
-__version__ = "0.7.0"
+__version__ = "2.0beta1"
 
 setup(name=PACKAGE_NAME,
       version=__version__,

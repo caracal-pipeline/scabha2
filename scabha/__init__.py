@@ -1,44 +1,10 @@
-# -*- coding: future_fstrings -*-
 import os
 import logging
-import sys
-import yaml
 import subprocess
-from collections import OrderedDict
 
-from .logging_utils import ConsoleColors, SelectiveFormatter, ColorizingFormatter, MultiplexingHandler
-from .proc_utils import prun, prun_multi, clear_junk, parse_parameters
+from .logging_utils import ConsoleColors, ColorizingFormatter, MultiplexingHandler
 from .  import exceptions
 
-# CONFIG = os.environ["CONFIG"]
-# INPUT = os.environ["INPUT"]
-# OUTPUT = os.environ["OUTPUT"]
-# MSDIR = os.environ["MSDIR"]
-
-
-# class ConfigNamespace(object):
-#     """A config namespace maps a dict with attribute-like keys to a namespace with attributes.
-
-#     It also has a get(attr, default=None) method, and it can be iterated over,
-#     yielding name, value pairs.
-#     """
-#     def __init__(self, mapping):
-#         self._mapping = {}
-#         for name, value in mapping.items():
-#             self._mapping[name] = value
-#             name = name.replace("-", "_")
-#             setattr(self, name, value)
-#     def get(self, key, default=None):
-#         return self._mapping.get(key, default)
-#     def items(self):
-#         return self._mapping.items()
-
-# # load config into a config namespace, and config["parameters"] into a parameters namespace
-# with open(CONFIG, "r") as _std:
-#     config = ConfigNamespace(yaml.safe_load(_std))
-#     parameters_dict = OrderedDict([(p["name"], p["value"]) for p in getattr(config, 'parameters', [])])
-#     parameters_prefix = OrderedDict([(p["name"], p.get("prefix", config.prefix)) for p in getattr(config, 'parameters', [])])
-#     parameters = ConfigNamespace(parameters_dict)
 
 def init_logger(name="SCABHA",
            fmt="{asctime}: {message}",
@@ -101,6 +67,3 @@ def init():
 
 log = None
 init_logger()
-
-
-

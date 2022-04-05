@@ -1,14 +1,15 @@
-import sys, os.path
+import sys
+import os.path
 import pytest
 from scabha import configuratt
 from omegaconf import OmegaConf
 from typing import *
 
-def test_includes(path=None):
-    path = path or "testconf.yaml"
+testdir = os.path.dirname(os.path.abspath(__file__))
 
+def test_includes(path=None):
+    path = path or os.path.join(testdir, "testconf.yaml")
     conf = configuratt.load(path, use_sources=[])
-    
     nested = ["test_nest_a.yml", "test_nest_b.yml", "test_nest_c.yml"]
     nested = [os.path.join(os.path.dirname(path), name) for name in nested]
 
