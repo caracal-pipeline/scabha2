@@ -269,14 +269,14 @@ class Cargo(object):
         assert(self.finalized)
         
         # check inputs
-        params.update(**validate_parameters(params, self.inputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
+        params1 = validate_parameters(params, self.inputs, defaults=self.defaults, subst=subst, fqname=self.fqname,
                                                 check_unknowns=False, check_required=not loosely, check_exist=not loosely, 
-                                                create_dirs=not loosely))
+                                                create_dirs=not loosely)
         # check outputs
-        params.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname, 
+        params1.update(**validate_parameters(params, self.outputs, defaults=self.defaults, subst=subst, fqname=self.fqname, 
                                                 check_unknowns=False, check_required=False, check_exist=False, 
                                                 create_dirs=not loosely))
-        return params
+        return params1
 
     def validate_outputs(self, params: Dict[str, Any], subst: Optional[SubstitutionNS]=None, loosely=False):
         """Validates outputs. Parameter substitution is done. 

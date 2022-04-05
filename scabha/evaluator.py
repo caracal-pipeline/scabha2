@@ -325,7 +325,7 @@ class Evaluator(object):
                             corresponding_ns[name] = str(defaults[name])
                     else: 
                         del params[name]
-                        if corresponding_ns:
+                        if corresponding_ns and name in corresponding_ns:
                             del corresponding_ns[name]
                 elif new_value is not value and new_value != value:
                     params[name] = new_value
