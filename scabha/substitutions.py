@@ -192,7 +192,7 @@ class SubstitutionContext(object):
     def __post_init__(self):
         self.formatter = SubstitutionFormatter(self)
         # current substitution location. This is appended to with every nested attribute lookup
-        self.nested_location = None
+        self.nested_location = []
         # current location stack. A new element is inserted every time a nested substitution starts
         self.loc_stack = []
         # 
@@ -236,7 +236,7 @@ class SubstitutionContext(object):
                 while self.loc_stack[-1][0] is not None:
                     self.loc_stack.pop()
                 self.loc_stack.pop()
-                self.nested_location = self.loc_stack[-1][0] if self.loc_stack else None
+                self.nested_location = self.loc_stack[-1][0] if self.loc_stack else []
 
         return value
 
@@ -342,10 +342,99 @@ def substitutions_from(ns: Optional[SubstitutionNS], raise_errors=False, forgive
 
 
 def forgiving_substitutions_from(ns: SubstitutionNS, forgive="", raise_errors=False):
+    """"""
     forgive_errors = {err: forgive for err in [AttributeError, KeyError, TypeError, ValueError, SubstitutionError]}
 
     return substitutions_from(ns, raise_errors=raise_errors, forgive_errors=forgive_errors)
 
 
 
+def perform_ll_substitutions(subst: Dict[str, Any], params: Dict[str, Any], 
+                             raise_exceptions: bool=False) -> List[Exception]:
+    """performs <<-substitutions on dict of parameters
 
+    Args:
+        subst (Dict[str, Any]): substitution ictionary
+        params (Dict[str, Any]): parameter dictionary, modified in place
+        raise_exceptions (bool, optional): raise exceptions on error. Defaults to False.
+
+    Returns:
+        List[Exception]: list of errors (if raise_exceptions is False), or [] on success
+    """    
+
+    errors = OrderedDict()
+    repeat = True
+    while repeat:
+        repeat = False  # will reraise if need to run again (going to add that feature)
+        
+        for name, value in list(params.items()):
+            if name not in errors and type(value) is str:
+                # << is escape character -- maps back to single <
+                if value.startswith("<<<"):
+                    params[name] = value[1:]
+                elif value.startswith("<<"):
+                    target = value[2:].strip()
+                    if not target:
+                        exc = SubstitutionError(f"{name} = << {value}: has no <<-substitution target")
+                        if raise_exceptions:
+                            raise exc
+                        errors[name] = exc
+                        continue
+                    # check for ?value :value and !value specifiers
+                    components = target.split(" ")
+                    true_value = false_value = undef_value = exc = None
+                    if len(components) > 1:
+                        target = components[0]
+                        for comp in components[1:]:
+                            if comp.startswith("?"):
+                                true_value = comp[1:]
+                            elif comp.startswith(":"):
+                                false_value = comp[1:]
+                            elif comp.startswith("!"):
+                                undef_value = comp[1:]
+                                # add trailing ? to target if it was missing
+                                if '?' not in target:
+                                    target = target + "?"
+                            else:
+                                exc = SubstitutionError(f"{name} = '{value}': invalid component '{comp}'")
+                                break
+                    if exc is not None:
+                        if raise_exceptions:
+                            raise exc
+                        errors[name] = exc
+                        continue
+                    keys = target.split('.')
+                    # look up keys in substitution dict recursively
+                    # a ?-lookup is optional
+                    target_value = subst
+                    while keys:
+                        key = keys.pop(0)
+                        optional = key.endswith('?')
+                        if optional:
+                            key = key[:-1]
+                        target_value = target_value.get(key, SubstitutionError)
+                        if target_value is SubstitutionError:
+                            break
+                    # repeat loop eventually, since something has changed
+                    repeat = True
+                    # if a lookup has failed -- for optional lookups, delete the parameter, otherwise
+                    # report error
+                    if target_value is SubstitutionError:
+                        if optional:
+                            if undef_value is not None:
+                                params[name] = undef_value
+                            else:
+                                del params[name]
+                        else:
+                            exc = SubstitutionError(f"{name} = '{value}': lookup failed for '{key}'")
+                            if raise_exceptions:
+                                raise exc
+                            errors[name] = exc
+                        continue
+                    # success!
+                    if target_value:
+                        params[name] = true_value if true_value is not None else target_value
+                    else:
+                        params[name] = false_value if false_value is not None else target_value
+                
+    return list(errors.values())

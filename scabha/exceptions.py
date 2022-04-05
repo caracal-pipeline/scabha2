@@ -40,6 +40,17 @@ class ParameterValidationError(ScabhaBaseException):
 class SubstitutionError(ScabhaBaseException):
     pass
 
+class UnsetError(ScabhaBaseException):
+    def __init__(self, message, element, log=None):
+        super().__init__(message, log)
+        self.element = element
+
+class ParserError(ScabhaBaseException):
+    pass
+
+class FormulaError(ScabhaBaseException):
+    pass
+
 class CyclicSubstitutionError(SubstitutionError):
     def __init__(self, location: List[str], other_location: List[str]):
         self.location = ".".join(location)
@@ -49,4 +60,4 @@ class CyclicSubstitutionError(SubstitutionError):
 class SubstitutionErrorList(ScabhaBaseException):
     def __init__(self, *errors):
         self.errors = errors
-        super().__init__(f"{len(errors)} substitution error(s)")
+        super().__init__(f"{len(errors)} substitution error(s): {'; '.join(map(str, errors))}")

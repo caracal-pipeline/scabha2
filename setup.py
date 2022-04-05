@@ -11,12 +11,13 @@ requirements = ["pyyaml",
                 "click",
                 "pydantic",
                 "ruamel.yaml",
+                "pyparsing",
                 "pytest",
                 ],
 
 PACKAGE_NAME = "scabha"
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 setup(name=PACKAGE_NAME,
       version=__version__,
