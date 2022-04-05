@@ -1,6 +1,7 @@
 import dataclasses
 import os, os.path, yaml, re
 from typing import *
+from collections import OrderedDict
 
 from omegaconf import OmegaConf, ListConfig, DictConfig, MISSING
 import pydantic
@@ -111,12 +112,13 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
             if name not in schemas:
                 raise ParameterValidationError(f"unknown parameter '{mkname(name)}'")
     
-    inputs = params.copy()
+    # only evaluate the subset for which we have schemas
+    inputs = OrderedDict((name, value) for name, value in params.items() if name in schemas)
     
     # build dict of all defaults 
     all_defaults = {name: schema.default for name, schema in schemas.items() if schema.default is not None}
     if defaults:
-        all_defaults.update(**defaults)
+        all_defaults.update(**{name: value for name, value in defaults.items() if name in schemas})
 
     # update missing inputs from defaults
     inputs.update(**{name: value for name, value in all_defaults.items() if name not in inputs})
