@@ -212,6 +212,8 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
           
             # check for existence of all files in list, if needed
             if must_exist: 
+                if not files:
+                    raise ParameterValidationError(f"'{mkname(name)}': file(s) don't exist")
                 not_exists = [f for f in files if not os.path.exists(f)]
                 if not_exists:
                     raise ParameterValidationError(f"'{mkname(name)}': {','.join(not_exists)} doesn't exist")
@@ -220,19 +222,24 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
             if dtype in (File, Directory, MS):
                 if len(files) > 1:
                     raise ParameterValidationError(f"'{mkname(name)}': multiple files given ({value})")
-                # check that files are files and dirs are dirs
-                if os.path.exists(files[0]):
-                    if dtype is File:
-                        if not os.path.isfile(files[0]):
-                            raise ParameterValidationError(f"'{mkname(name)}': {value} is not a regular file")
-                    else:
-                        if not os.path.isdir(files[0]):
-                            raise ParameterValidationError(f"'{mkname(name)}': {value} is not a directory")
-                inputs[name] = files[0]
-                if create_dirs:
-                    dirname = os.path.dirname(files[0])
-                    if dirname:
-                        os.makedirs(dirname, exist_ok=True)
+                # no files? must_exist was checked above, so return empty filename
+                elif not files:
+                    inputs[name] = "" 
+                # else one file/dir as expected, check it                   
+                else:
+                    # check that files are files and dirs are dirs
+                    if os.path.exists(files[0]):
+                        if dtype is File:
+                            if not os.path.isfile(files[0]):
+                                raise ParameterValidationError(f"'{mkname(name)}': {value} is not a regular file")
+                        else:
+                            if not os.path.isdir(files[0]):
+                                raise ParameterValidationError(f"'{mkname(name)}': {value} is not a directory")
+                    inputs[name] = files[0]
+                    if create_dirs:
+                        dirname = os.path.dirname(files[0])
+                        if dirname:
+                            os.makedirs(dirname, exist_ok=True)
             # else make list
             else:
                 # check that files are files and dirs are dirs
