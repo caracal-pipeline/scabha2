@@ -18,6 +18,8 @@ _parser = None
 def construct_parser():
     lparen = Literal("(").suppress()
     rparen = Literal(")").suppress()
+    lbrack = Keyword("[").suppress()
+    rbrack = Keyword("]").suppress()
     comma = Literal(",").suppress()
     period = Literal(".").suppress()
     string = (QuotedString('"') | QuotedString("'"))("constant")
@@ -32,7 +34,7 @@ def construct_parser():
     fieldname = Word(alphas + "_", alphanums + "_-@")
     nested_field = Group(fieldname + ZeroOrMore(period + fieldname).leave_whitespace()).leave_whitespace()("namespace_lookup")
 
-    anyseq = CharsNotIn(",)")("constant")
+    anyseq = CharsNotIn(",)]")("constant")
 
     UNSET = Keyword("UNSET")("unset")
     # functions
@@ -40,10 +42,11 @@ def construct_parser():
     IFSET = Keyword("IFSET")
     GLOB = Keyword("GLOB")
     EXISTS = Keyword("EXISTS")
+    LIST = Keyword("LIST")
 
     # allow expression to be used recursively
     expr = Forward()
-
+    
     # parenthesized expression
     subexpr = Group(lparen + expr + rparen)("subexpression")
 
@@ -57,9 +60,15 @@ def construct_parser():
                      Optional(comma_varg|comma_empty) + Optional(comma_varg|comma_empty) + rparen
     glob_ = GLOB + lparen + (varg|anyseq) + rparen
     exists_ = EXISTS + lparen + (varg|anyseq) + rparen
+    #list_ = LIST + lparen + delimited_list(varg, allow_trailing_delim=True) + rparen
+    #list_ = LIST + lparen + varg  + ZeroOrMore(comma_varg) + rparen
 
     # function call
     function = (ifset_ | if_ | glob_  | exists_)("function")
+    
+    # list constructor
+    #list_constructor = Group(lbrack + delimitedList(expr, ",", allow_trailing_delim=True) + rbrack)("list_constructor")
+#    list_constructor = Group(lbrack + Optional(expr) + OneOrMore(comma+expr) + rbrack)("list_constructor")
 
     operators = (
         [(Literal("**")("op2"), 1, opAssoc.LEFT)] + 
@@ -81,7 +90,9 @@ def construct_parser():
     )
     infix = infix_notation(function | atomic_value, operators)("subexpression")
 
-    expr <<= function | infix
+    expr <<= function | infix # | list_constructor
+
+    # expr.setDebug()
 
     return expr
 
@@ -183,6 +194,9 @@ class Evaluator(object):
 
     def subexpression(self, value):
         return self._evaluate_result(value)
+    
+    def list_constructor(self, *elements):
+        return [self._evaluate_result(value) for value in elements]
 
     def namespace_lookup(self, *args):
         if len(args) == 1 and type(args[0]) is ParseResults:
