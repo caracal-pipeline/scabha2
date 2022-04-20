@@ -34,7 +34,7 @@ def construct_parser():
     fieldname = Word(alphas + "_", alphanums + "_-@")
     nested_field = Group(fieldname + ZeroOrMore(period + fieldname).leave_whitespace()).leave_whitespace()("namespace_lookup")
 
-    anyseq = CharsNotIn(",)]")("constant")
+    anyseq = CharsNotIn(",)")("constant")
 
     UNSET = Keyword("UNSET")("unset")
     # functions
@@ -61,14 +61,20 @@ def construct_parser():
     glob_ = GLOB + lparen + (varg|anyseq) + rparen
     exists_ = EXISTS + lparen + (varg|anyseq) + rparen
     #list_ = LIST + lparen + delimited_list(varg, allow_trailing_delim=True) + rparen
-    #list_ = LIST + lparen + varg  + ZeroOrMore(comma_varg) + rparen
+    list_ = (LIST + lparen + varg + rparen) | \
+            (LIST + lparen + varg + comma_varg + rparen) | \
+            (LIST + lparen + varg + comma_varg + comma_varg + rparen) | \
+            (LIST + lparen + varg + comma_varg + comma_varg + rparen) | \
+            (LIST + lparen + varg + comma_varg + comma_varg + comma_varg + rparen) | \
+            (LIST + lparen + varg + comma_varg + comma_varg + comma_varg + comma_varg + rparen) | \
+            (LIST + lparen + varg + comma_varg + comma_varg + comma_varg + comma_varg + comma_varg + rparen) 
 
     # function call
-    function = (ifset_ | if_ | glob_  | exists_)("function")
+    function = (list_ | ifset_ | if_ | glob_  | exists_)("function")
     
     # list constructor
     #list_constructor = Group(lbrack + delimitedList(expr, ",", allow_trailing_delim=True) + rbrack)("list_constructor")
-#    list_constructor = Group(lbrack + Optional(expr) + OneOrMore(comma+expr) + rbrack)("list_constructor")
+    list_constructor = Group(lbrack + varg + comma_varg + comma_varg)("list_constructor")
 
     operators = (
         [(Literal("**")("op2"), 1, opAssoc.LEFT)] + 
@@ -90,7 +96,7 @@ def construct_parser():
     )
     infix = infix_notation(function | atomic_value, operators)("subexpression")
 
-    expr <<= function | infix # | list_constructor
+    expr <<= function | infix | list_constructor
 
     # expr.setDebug()
 
@@ -220,6 +226,9 @@ class Evaluator(object):
         if not hasattr(self, method):
             raise NameError(f"{'.'.join(self.location)}: unknown function '{funcname}'")
         return getattr(self, method)(*args)
+
+    def func_LIST(self, *args):
+        return [self._evaluate_result(value) for value in args]
 
     def func_IF(self, *args):
         if len(args) < 3 or len(args) > 4:
