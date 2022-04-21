@@ -3,7 +3,7 @@ from typing import Any, List, Dict, Optional, Union
 from collections import OrderedDict
 from enum import Enum, IntEnum
 from dataclasses import dataclass
-from omegaconf import MISSING, ListConfig, DictConfig
+from omegaconf import MISSING, ListConfig, DictConfig, OmegaConf
 
 import rich.box
 import rich.markup
@@ -242,6 +242,10 @@ class Cargo(object):
         if self._dyn_schema:
             self._inputs_outputs = None
             self.inputs, self.outputs = self._dyn_schema(params, self.inputs, self.outputs)
+            for io in self.inputs, self.outputs:
+                for name, schema in list(io.items()):
+                    if isinstance(schema, DictConfig):
+                        io[name] = Parameter(**schema)
         # add implicits, if resolved
         for name, schema in self.inputs_outputs.items():
             if schema.implicit is not None and type(schema.implicit) is not Unresolved:
