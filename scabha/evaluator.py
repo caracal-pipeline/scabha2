@@ -73,8 +73,19 @@ def construct_parser():
     function = (list_ | ifset_ | if_ | glob_  | exists_)("function")
     
     # list constructor
+    ## this causes an infinite recursiov even if not added to expr -- why?
     #list_constructor = Group(lbrack + delimitedList(expr, ",", allow_trailing_delim=True) + rbrack)("list_constructor")
-    list_constructor = Group(lbrack + varg + comma_varg + comma_varg)("list_constructor")
+    
+    ## this is not recognized so will leave it out for now
+    list_constructor = (
+            (lbrack + rbrack) |
+            (lbrack + varg + rbrack) |
+            (lbrack + varg + comma_varg + rbrack) |
+            (lbrack + varg + comma_varg + comma_varg + rbrack) |
+            (lbrack + varg + comma_varg + comma_varg + comma_varg + rbrack) |
+            (lbrack + varg + comma_varg + comma_varg + comma_varg + comma_varg + rbrack) |
+            (lbrack + varg + comma_varg + comma_varg + comma_varg + comma_varg + comma_varg + rbrack)
+        )("list_constructor")
 
     operators = (
         [(Literal("**")("op2"), 1, opAssoc.LEFT)] + 
@@ -94,9 +105,9 @@ def construct_parser():
             (Keyword("or")("op2"), 2, opAssoc.LEFT)
         ]
     )
-    infix = infix_notation(function | atomic_value, operators)("subexpression")
+    infix = infix_notation(function | atomic_value , operators)("subexpression")
 
-    expr <<= function | infix | list_constructor
+    expr <<= function | infix 
 
     # expr.setDebug()
 
