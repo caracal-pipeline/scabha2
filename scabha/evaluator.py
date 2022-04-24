@@ -77,7 +77,7 @@ def construct_parser():
     list_constructor = Group(lbrack + varg + comma_varg + comma_varg)("list_constructor")
 
     operators = (
-        [(Literal("**")("op2"), 1, opAssoc.LEFT)] + 
+        [(Literal("**")("op2"), 2, opAssoc.LEFT)] + 
         [(Literal(x)("op1"), 1, opAssoc.RIGHT) for x in "-+~"] + 
         [(Literal(x)("op2"), 2, opAssoc.LEFT) for x in ("*", "//", "/", "%")] +
         [(Literal(x)("op2"), 2, opAssoc.LEFT) for x in "+-"] +
