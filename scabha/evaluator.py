@@ -62,7 +62,7 @@ def construct_parser():
     function = (ifset_ | if_ | glob_  | exists_)("function")
 
     operators = (
-        [(Literal("**")("op2"), 1, opAssoc.LEFT)] + 
+        [(Literal("**")("op2"), 2, opAssoc.LEFT)] + 
         [(Literal(x)("op1"), 1, opAssoc.RIGHT) for x in "-+~"] + 
         [(Literal(x)("op2"), 2, opAssoc.LEFT) for x in ("*", "//", "/", "%")] +
         [(Literal(x)("op2"), 2, opAssoc.LEFT) for x in "+-"] +
