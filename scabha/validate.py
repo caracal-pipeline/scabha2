@@ -129,8 +129,11 @@ def validate_parameters(params: Dict[str, Any], schemas: Dict[str, Any],
 
     # perform substitution
     if subst is not None:
-        inputs = evaluate_and_substitute(inputs, subst, subst.current, defaults=all_defaults, 
+        subst_inputs = {key: value for key, value in inputs.items()
+                        if not schemas[key].policies.disable_substitutions}
+        subst_inputs = evaluate_and_substitute(subst_inputs, subst, subst.current, defaults=all_defaults, 
                                         ignore_subst_errors=ignore_subst_errors, location=[fqname])
+        inputs.update(**subst_inputs)
 
     # split inputs into unresolved substitutions, and proper inputs
     unresolved = {name: value for name, value in inputs.items() if isinstance(value, Unresolved)}
