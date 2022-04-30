@@ -141,7 +141,7 @@ class SubstitutionNS(OrderedDict):
                     # recursive=False will invoke substitution on strings, but will return containers as is
                     value = context.evaluate(value, location=nestloc, recursive=False)
                 return value
-            elif default in (KeyError, AttributeError):
+            elif default in (KeyError, AttributeError, SubstitutionError):
                 raise default(name)
             else:
                 return default

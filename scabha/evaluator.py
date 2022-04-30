@@ -229,7 +229,11 @@ class Evaluator(object):
                     raise SubstitutionError(f"{'.'.join(self.location)}: '{'.'.join(args)}' is not defined (at '{fld}')")
                 else:
                     return UNSET('.'.join(args))
-            value = value[fld]
+            try:
+                value = value[fld]
+            except (KeyError, AttributeError) as exc:
+                raise SubstitutionError(f"{'.'.join(self.location)}: '{'.'.join(args)}': {exc}")
+
         return self._resolve(value)
 
     def function(self, funcname, *args):
