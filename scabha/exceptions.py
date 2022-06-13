@@ -1,4 +1,5 @@
 from typing import List
+import typing
 
 logger = None
 
@@ -13,7 +14,18 @@ class Error(str):
 
 
 class ScabhaBaseException(Exception):
-    def __init__(self, message, log=None):
+    def __init__(self, message: str, nested: typing.Optional[Exception] = None, log=None):
+        """Initializes exception object
+
+        Args:
+            message (str): error message
+            nested (Optional[Exception]): Nested exception. Defaults to None.
+            log (logger): if not None, logs the exception to the given logger
+        """
+        self.message = message
+        self.nested = nested
+        if nested is not None:
+            message = f"{message}: {nested}"
         Exception.__init__(self, message)
         if log is not None:
             if not hasattr(log, 'error'):
