@@ -14,7 +14,7 @@ class SimpleSchema():
 
 def test_schema():
     path = os.path.join(testdir, "test_schema.yaml")
-    conf = configuratt.load(path, use_sources=[])
+    conf, _ = configuratt.load(path, use_sources=[])
     conf = OmegaConf.merge(OmegaConf.structured(SimpleSchema), conf)
     OmegaConf.save(conf, sys.stdout)
 
