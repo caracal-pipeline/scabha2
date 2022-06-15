@@ -371,6 +371,7 @@ class Cab(Cargo):
     ACTION_DECLARE_SUCCESS = wrangler_actions["DECLARE_SUCCESS"] = "DECLARE_SUPPRESS"
     ACTION_DECLARE_FAILURE = wrangler_actions["DECLARE_FAILURE"] = "DECLARE_FAILURE"
 
+    _path: Optional[str] = None   # path to image definition yaml file, if any
 
     def __post_init__ (self):
         if self.name is None:
