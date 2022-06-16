@@ -196,7 +196,7 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                                 if os.path.exists(filename):
                                     break
                             else:
-                                raise ConfigurattError(f"{errloc}: _include {incl} not found in {':'.join(PATH)}")
+                                raise ConfigurattError(f"{errloc}: _include {incl} not found in {':'.join(paths)}")
 
                         # load included file
                         incl_conf, deps = load(filename, location=location, 
@@ -279,20 +279,21 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
 # paths to search for _include statements
 PATH = ['.']
 
-_CACHEDIR = os.path.expanduser("~/.cache/configuratt")
+CACHEDIR = os.path.expanduser("~/.cache/configuratt")
 
 
-def _compute_hash(filelist):
+def _compute_hash(filelist, extra_keys):
+    filelist = list(filelist) + list(extra_keys)
     return hashlib.md5(" ".join(filelist).encode()).hexdigest()
 
 
-def load_cache(filelist: List[str], verbose=None):
-    filehash = _compute_hash(filelist)
-    if not os.path.isdir(_CACHEDIR):
+def load_cache(filelist: List[str], extra_keys=[], verbose=None):
+    filehash = _compute_hash(filelist, extra_keys)
+    if not os.path.isdir(CACHEDIR):
         if verbose:
-            print(f"{_CACHEDIR} does not exist")
+            print(f"{CACHEDIR} does not exist")
         return None, None
-    filename = os.path.join(_CACHEDIR, filehash)
+    filename = os.path.join(CACHEDIR, filehash)
     if not os.path.exists(filename):
         if verbose:
             print(f"hash file {filename} does not exist")
@@ -322,10 +323,10 @@ def load_cache(filelist: List[str], verbose=None):
     return conf, deps
 
 
-def save_cache(filelist: List[str], conf, deps, verbose=False):
-    pathlib.Path(_CACHEDIR).mkdir(parents=True, exist_ok=True)
-    filehash = _compute_hash(filelist)
-    filename = os.path.join(_CACHEDIR, filehash)
+def save_cache(filelist: List[str], conf, deps, extra_keys=[], verbose=False):
+    pathlib.Path(CACHEDIR).mkdir(parents=True, exist_ok=True)
+    filehash = _compute_hash(filelist, extra_keys)
+    filename = os.path.join(CACHEDIR, filehash)
     pickle.dump((conf, deps), open(filename, "wb"), 2)
     if verbose:
         print(f"Caching config for {' '.join(filelist)} as {filename}")
