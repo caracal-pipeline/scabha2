@@ -12,7 +12,7 @@ from rich.markdown import Markdown
 
 import scabha
 from scabha import exceptions
-from .exceptions import CabValidationError, ParameterValidationError, DefinitionError, SchemaError
+from .exceptions import CabValidationError, NestedSchemaError, ParameterValidationError, DefinitionError, SchemaError
 from .validate import validate_parameters, Unresolved
 from .substitutions import SubstitutionNS
 from .basetypes import EmptyDictDefault, EmptyListDefault
@@ -22,7 +22,6 @@ ListOrString = Any
 
 
 Conditional = Optional[str]
-
 
 @dataclass 
 class ParameterPolicies(object):
@@ -173,28 +172,72 @@ class Parameter(object):
                 self.category = ParameterCategory.Optional
         return self.category
 
+ParameterSchema = OmegaConf.structured(Parameter)
+
 @dataclass
 class Cargo(object):
     name: Optional[str] = None                    # cab name (if None, use image or command name)
     fqname: Optional[str] = None                  # fully-qualified name (recipe_name.step_label.etc.etc.)
 
     info: Optional[str] = None                    # description
-    inputs: Dict[str, Parameter] = EmptyDictDefault()
-    outputs: Dict[str, Parameter] = EmptyDictDefault()
+
+    # schemas are postentially nested (dicts of dicts), which omegaconf doesn't quite recognize,
+    # (or in my ignorance I can't specify it -- in any case Union support is weak), so do a dict to Any
+    # "Leaf" elements of the nested dict must be Parameters
+    inputs: Dict[str, Any]   = EmptyDictDefault()
+    outputs: Dict[str, Any]  = EmptyDictDefault()
     defaults: Dict[str, Any] = EmptyDictDefault()
+
     backend: Optional[str] = None                 # backend, if not default
 
     dynamic_schema: Optional[str] = None          # function to call to augment inputs/outputs dynamically
 
+    @staticmethod
+    def flatten_schemas(io_dest, io, label, prefix=""):
+        for name, value in io.items():
+            name = f"{prefix}{name}"
+            if not isinstance(value, Parameter):
+                if not isinstance(value, (DictConfig, dict)):
+                    raise SchemaError(f"{label}.{name} is not a valid schema")
+                # try to treat as Parameter
+                try:
+                    value = OmegaConf.merge(ParameterSchema, value)
+                    io_dest[name] = Parameter(**value)
+                except Exception as exc0:
+                    # try to treat as sub-schema
+                    try:
+                        Cargo.flatten_schemas(io_dest, value, label=label, prefix=f"{name}.")
+                    # nested error from down the tree gets re-raises as is
+                    except NestedSchemaError as exc:
+                        raise
+                    # all other exceptios, raise a NestedScheme error up
+                    except Exception as exc:
+                        raise NestedSchemaError(f"{label}.{name} is neither a parameter definition ({exc0}) nor a nested schema ({exc}")
+        return io_dest
+
+    def flatten_param_dict(self, output_params, input_params, prefix=""):
+        for name, value in input_params.items():
+            name = f"{prefix}{name}"
+            if isinstance(value, (dict, DictConfig)):
+                # if prefix.name. is present in schemas, treat as nested mapping
+                if any(k.startswith(f"{name}.") for k in self.inputs_outputs):
+                    self.flatten_param_dict(output_params, value, prefix=f"{name}.")
+                    continue
+            output_params[name] = value
+        return output_params
+
     def __post_init__(self):
         self.fqname = self.fqname or self.name
-        self.inputs = OrderedDict((name, Parameter(**schema)) for name, schema in self.inputs.items())
-        self.outputs = OrderedDict((name, Parameter(**schema)) for name, schema in self.outputs.items())
+        # flatten inputs/outputs into a single dict (with entries like sub.foo.bar)
+        self.inputs = Cargo.flatten_schemas(OrderedDict(), self.inputs, "inputs")
+        self.outputs = Cargo.flatten_schemas(OrderedDict(), self.outputs, "outputs")
         for name in self.inputs.keys():
             if name in self.outputs:
                 raise DefinitionError(f"{name} appears in both inputs and outputs")
         self._inputs_outputs = None
         self._implicit_params = set()   # marks implicitly set values
+        # flatten defaults and aliases
+        self.defaults = self.flatten_param_dict(OrderedDict(), self.defaults)
         # pausterized name
         self.name_ = re.sub(r'\W', '_', self.name or "")  # pausterized name
         # config and logger objects
@@ -245,6 +288,10 @@ class Cargo(object):
             for io in self.inputs, self.outputs:
                 for name, schema in list(io.items()):
                     if isinstance(schema, DictConfig):
+                        try:
+                            schema = OmegaConf.merge(ParameterSchema, schema)
+                        except Exception  as exc:
+                            raise SchemaError(f"error in dynamic schema for parameter 'name'", exc)
                         io[name] = Parameter(**schema)
         # add implicits, if resolved
         for name, schema in self.inputs_outputs.items():

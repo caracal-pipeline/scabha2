@@ -444,7 +444,7 @@ def load_nested(filelist: List[str],
             # apply schema
             if structured is not None:
                 try:
-                    subconf = OmegaConf.unsafe_merge(structured, subconf) 
+                    subconf = OmegaConf.merge(structured, subconf) 
                 except (OmegaConfBaseException, YAMLError) as exc:
                     raise ConfigurattError(f"schema error in {path}: {exc}")
 
@@ -456,7 +456,7 @@ def load_nested(filelist: List[str],
             fields = [(name, typeinfo) for name in section_content.keys()]
             datacls = make_dataclass(config_class, fields)
             structured = OmegaConf.structured(datacls)
-            section_content = OmegaConf.unsafe_merge(structured, section_content)
+            section_content = OmegaConf.merge(structured, section_content)
     
         if use_cache:
             save_cache(filelist, section_content, dependencies, verbose=verbose)

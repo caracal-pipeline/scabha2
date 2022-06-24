@@ -111,11 +111,24 @@ class SubstitutionNS(OrderedDict):
             value (Any): item value. A dict or OrderedDict value becomes a SubstitutionNS automatically, with nosubst property
             nosubst (bool): use this as the nosubst property of the sub-namespace
         """
-        if type(value) in (dict, OrderedDict):
-            value = SubstitutionNS(_nosubst_=nosubst or self._nosubst_, _name_=self._name_ + [name], **value)
-        # if isinstance(value, SubstitutionNS):
-        #     OrderedDict.__setattr__(v, "_props_", props)
-        super().__setitem__(name, value)
+        # names with dots turned into sub-namespaces
+        if '.' in name:
+            subns_name, key = name.split('.', 1)
+            if subns_name in self:
+                subns = super().__getitem__(subns_name)
+                if type(subns) is not SubstitutionNS:
+                    raise TypeError(f"can't insert '{name}': {subns_name} is not a nested namespace")
+            else:
+                subns = SubstitutionNS(_nosubst_=nosubst or self._nosubst_, _name_=self._name_ + [subns_name])
+            subns._add_(key, value)
+            super().__setitem__(subns_name, subns)
+        else:
+            # a nested dict value becomes a substitution namespace automatically
+            if type(value) in (dict, OrderedDict):
+                value = SubstitutionNS(_nosubst_=nosubst or self._nosubst_, _name_=self._name_ + [name], **value)
+            # if isinstance(value, SubstitutionNS):
+            #     OrderedDict.__setattr__(v, "_props_", props)
+            super().__setitem__(name, value)
 
     def __setattr__(self, name: str, value: Any) -> None:
         SubstitutionNS._add_(self, name, value)
