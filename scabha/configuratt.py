@@ -314,6 +314,10 @@ def load_cache(filelist: List[str], extra_keys=[], verbose=None):
         return None, None
     # check that all dependencies are older than the cache
     for f in deps:
+        if not os.path.exists(f):
+            if verbose:
+                print(f"Dependency {f} doesn't exist, forcing reload")
+            return None, None
         if os.path.getmtime(f) > cache_mtime:
             if verbose:
                 print(f"Dependency {f} is newer than the cache, forcing reload")
@@ -325,8 +329,12 @@ def load_cache(filelist: List[str], extra_keys=[], verbose=None):
 
 def save_cache(filelist: List[str], conf, deps, extra_keys=[], verbose=False):
     pathlib.Path(CACHEDIR).mkdir(parents=True, exist_ok=True)
+    filelist = list(filelist)   # add self to dependencies
     filehash = _compute_hash(filelist, extra_keys)
     filename = os.path.join(CACHEDIR, filehash)
+    # add ourselves to dependencies, so that cache is cleared if implementation changes
+    deps = set(deps)
+    deps.add(__file__)
     pickle.dump((conf, deps), open(filename, "wb"), 2)
     if verbose:
         print(f"Caching config for {' '.join(filelist)} as {filename}")
