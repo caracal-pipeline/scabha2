@@ -9,7 +9,8 @@ requirements = ["pyyaml",
                 "ruamel.yaml",
                 "pyparsing",
                 "pytest",
-                "rich"
+                "rich",
+                "dill"
                 ],
 
 PACKAGE_NAME = "scabha"
