@@ -1,6 +1,9 @@
 import os.path
 import importlib
+import hashlib
+import pathlib
 import re
+import dill as pickle
 from collections.abc import Sequence
 
 import uuid
@@ -95,7 +98,7 @@ def _flatten_subsections(conf, depth: int = 1, sep: str = "__"):
 def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes: bool, use_sources: Optional[List[DictConfig]], 
                         selfrefs: bool = True, 
                         include_path: Optional[str]=None):
-    """Resolves cross-references ("_use" fieds) in config object
+    """Resolves cross-references ("_use" and "_include" statements) in config object
 
     Parameters
     ----------
@@ -118,8 +121,11 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
 
     Returns
     -------
+    Tuple of (conf, dependencies)
     conf : OmegaConf object    
         This may be a new object if a _use key was resolved, or it may be the existing object
+    dependencies : set
+        Set of filenames that were _included
 
     Raises
     ------
@@ -127,6 +133,7 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
         If a _use or _include directive is malformed
     """
     errloc = f"config error at {location or 'top level'} in {name}"
+    dependencies = set()
 
     if isinstance(conf, DictConfig):
 
@@ -189,14 +196,15 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                                 if os.path.exists(filename):
                                     break
                             else:
-                                raise ConfigurattError(f"{errloc}: _include {incl} not found in {':'.join(PATH)}")
+                                raise ConfigurattError(f"{errloc}: _include {incl} not found in {':'.join(paths)}")
 
                         # load included file
-                        incl_conf = load(filename, location=location, 
+                        incl_conf, deps = load(filename, location=location, 
                                             name=f"{filename}, included from {name}",
                                             includes=True, 
                                             use_sources=None)   # do not expand _use statements in included files, this is done below
 
+                        dependencies.update(deps)
                         if include_path is not None:
                             incl_conf[include_path] = filename
 
@@ -208,7 +216,7 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                         accum_incl_conf = OmegaConf.unsafe_merge(accum_incl_conf, incl_conf)
                     
                     # merge: our section overrides anything that has been included
-                    conf = OmegaConf.merge(accum_incl_conf, conf)
+                    conf = OmegaConf.unsafe_merge(accum_incl_conf, conf)
 
             # handle _use entries
             if use_sources is not None:
@@ -227,11 +235,12 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
                         base = merge_sections[0].copy()
                         base.merge_with(*merge_sections[1:])
                         # resolve references before flattening
-                        base = _resolve_config_refs(base, pathname=pathname, name=name, 
+                        base, deps = _resolve_config_refs(base, pathname=pathname, name=name, 
                                                 location=f"{location}._use" if location else "_use", 
                                                 includes=includes, 
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
                                                 include_path=include_path)
+                        dependencies.update(deps)
                         if flatten:
                             _flatten_subsections(base, flatten, flatten_sep)
                         base.merge_with(conf)
@@ -240,11 +249,12 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
         # recurse into content
         for key, value in conf.items_ex(resolve=False):
             if isinstance(value, (DictConfig, ListConfig)):
-                value1 = _resolve_config_refs(value, pathname=pathname, name=name, 
+                value1, deps = _resolve_config_refs(value, pathname=pathname, name=name, 
                                                 location=f"{location}.{key}" if location else key, 
                                                 includes=includes, 
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
                                                 include_path=include_path)
+                dependencies.update(deps)
                 # reassigning is expensive, so only do it if there was an actual change 
                 if value1 is not value:
                     conf[key] = value1
@@ -254,22 +264,85 @@ def _resolve_config_refs(conf, pathname: str, location: str, name: str, includes
         # recurse in
         for i, value in enumerate(conf._iter_ex(resolve=False)):
             if isinstance(value, (DictConfig, ListConfig)):
-                value1 = _resolve_config_refs(value, pathname=pathname, name=name, 
+                value1, deps = _resolve_config_refs(value, pathname=pathname, name=name, 
                                                 location=f"{location or ''}[{i}]", 
                                                 includes=includes, 
                                                 use_sources=None if use_sources is None else ([conf] + use_sources if selfrefs else use_sources), 
                                                 include_path=include_path)
+                dependencies.update(deps)
                 if value1 is not value:
                     conf[i] = value
-    return conf
+
+    return conf, dependencies
 
 
 # paths to search for _include statements
 PATH = ['.']
 
+CACHEDIR = os.path.expanduser("~/.cache/configuratt")
+
+
+def _compute_hash(filelist, extra_keys):
+    filelist = list(filelist) + list(extra_keys)
+    return hashlib.md5(" ".join(filelist).encode()).hexdigest()
+
+
+def load_cache(filelist: List[str], extra_keys=[], verbose=None):
+    filehash = _compute_hash(filelist, extra_keys)
+    if not os.path.isdir(CACHEDIR):
+        if verbose:
+            print(f"{CACHEDIR} does not exist")
+        return None, None
+    filename = os.path.join(CACHEDIR, filehash)
+    if not os.path.exists(filename):
+        if verbose:
+            print(f"hash file {filename} does not exist")
+        return None, None
+    # check that all configs are older than the cache
+    cache_mtime = os.path.getmtime(filename)
+    for f in filelist:
+        if os.path.getmtime(f) > cache_mtime:
+            if verbose:
+                print(f"Config {f} is newer than the cache, forcing reload")
+            return None, None
+    # load cache
+    try:
+        conf, deps = pickle.load(open(filename, 'rb'))
+    except Exception as exc:
+        print(f"Error loading cached config from {filename}: {exc}. Removing the cache.")
+        os.unlink(filename)
+        return None, None
+    # check that all dependencies are older than the cache
+    for f in deps:
+        if not os.path.exists(f):
+            if verbose:
+                print(f"Dependency {f} doesn't exist, forcing reload")
+            return None, None
+        if os.path.getmtime(f) > cache_mtime:
+            if verbose:
+                print(f"Dependency {f} is newer than the cache, forcing reload")
+            return None, None
+    if verbose:
+        print(f"Loaded cached config for {' '.join(filelist)} from {filename}")    
+    return conf, deps
+
+
+def save_cache(filelist: List[str], conf, deps, extra_keys=[], verbose=False):
+    pathlib.Path(CACHEDIR).mkdir(parents=True, exist_ok=True)
+    filelist = list(filelist)   # add self to dependencies
+    filehash = _compute_hash(filelist, extra_keys)
+    filename = os.path.join(CACHEDIR, filehash)
+    # add ourselves to dependencies, so that cache is cleared if implementation changes
+    deps = set(deps)
+    deps.add(__file__)
+    pickle.dump((conf, deps), open(filename, "wb"), 2)
+    if verbose:
+        print(f"Caching config for {' '.join(filelist)} as {filename}")
+
 
 def load(path: str, use_sources: Optional[List[DictConfig]] = [], name: Optional[str]=None, location: Optional[str]=None, 
-          includes: bool=True, selfrefs: bool=True, include_path: str=None):
+          includes: bool=True, selfrefs: bool=True, include_path: str=None, 
+          use_cache: bool = True, verbose: bool = False):
     """Loads config file, using a previously loaded config to resolve _use references.
 
     Args:
@@ -284,12 +357,22 @@ def load(path: str, use_sources: Optional[List[DictConfig]] = [], name: Optional
             if set, path to each config file will be included in the section as element 'include_path'
 
     Returns:
-        DictConfig: loaded OmegaConf object
+        Tuple of (conf, dependencies)
+            conf (DictConfig): config object    
+            dependencies (set): set of filenames that were _included
     """
-    subconf = OmegaConf.load(path)
-    name = name or os.path.basename(path)
+    conf, deps = load_cache((path,), verbose=verbose) if use_cache else (None, None)
 
-    return _resolve_config_refs(subconf, pathname=path, location=location, name=name, includes=includes, use_sources=use_sources, include_path=include_path)
+    if conf is None:
+        subconf = OmegaConf.load(path)
+        name = name or os.path.basename(path)
+
+        conf, deps = _resolve_config_refs(subconf, pathname=path, location=location, name=name, includes=includes, use_sources=use_sources, include_path=include_path)
+        deps.add(path)
+        if use_cache:
+            save_cache((path,), conf, deps, verbose=verbose)
+
+    return conf, deps
 
 
 def load_nested(filelist: List[str], 
@@ -299,7 +382,9 @@ def load_nested(filelist: List[str],
                 location: Optional[str] = None,  
                 nameattr: Union[Callable, str, None] = None,
                 config_class: Optional[str] = None,
-                include_path: Optional[str] = None):
+                include_path: Optional[str] = None,
+                use_cache: bool = True,
+                verbose: bool = False):
     """Builds nested configuration from a set of YAML files corresponding to sub-sections
 
     Parameters
@@ -326,55 +411,64 @@ def load_nested(filelist: List[str],
 
     Returns
     -------
-    dict
-        merged config with all subsections
+        Tuple of (conf, dependencies)
+            conf (DictConfig): config object    
+            dependencies (set): set of filenames that were _included
 
     Raises
     ------
     NameError
         If subsection name is not resolved
     """
-    section_content = {} # OmegaConf.create()
+    section_content, dependencies = load_cache(filelist, verbose=verbose) if use_cache else (None, None)
+
+    if section_content is None:
+        section_content = {} # OmegaConf.create()
+        dependencies = set()
+
+        for path in filelist:
+            # load file
+            subconf, deps = load(path, location=location, use_sources=use_sources, include_path=include_path)
+            dependencies.update(deps)
+            if include_path:
+                subconf[include_path] = path
+
+            # figure out section name
+            if nameattr is None:
+                name = os.path.splitext(os.path.basename(path))[0]
+            elif callable(nameattr):
+                name = nameattr(subconf) 
+            elif nameattr in subconf:
+                name = subconf.get(nameattr)
+            else:
+                raise NameError(f"{path} does not contain a '{nameattr}' field")
+
+            # # resolve _use and _include statements
+            # try:
+            #     subconf = resolve_config_refs(subconf, f"{location}.{name}" if location else name, conf, subconf))
+            # except (OmegaConfBaseException, YAMLError) as exc:
+            #     raise ConfigurattError(f"config error in {path}: {exc}")
+
+            # apply schema
+            if structured is not None:
+                try:
+                    subconf = OmegaConf.merge(structured, subconf) 
+                except (OmegaConfBaseException, YAMLError) as exc:
+                    raise ConfigurattError(f"schema error in {path}: {exc}")
+
+            section_content[name] = subconf
+
+        if structured is None and typeinfo is not None:
+            if config_class is None:
+                config_class = "ConfigClass_" + uuid.uuid4().hex
+            fields = [(name, typeinfo) for name in section_content.keys()]
+            datacls = make_dataclass(config_class, fields)
+            structured = OmegaConf.structured(datacls)
+            section_content = OmegaConf.merge(structured, section_content)
     
-    for path in filelist:
-        # load file
-        subconf = load(path, location=location, use_sources=use_sources, include_path=include_path)
-        if include_path:
-            subconf[include_path] = path
+        if use_cache:
+            save_cache(filelist, section_content, dependencies, verbose=verbose)
 
-        # figure out section name
-        if nameattr is None:
-            name = os.path.splitext(os.path.basename(path))[0]
-        elif callable(nameattr):
-            name = nameattr(subconf) 
-        elif nameattr in subconf:
-            name = subconf.get(nameattr)
-        else:
-            raise NameError(f"{path} does not contain a '{nameattr}' field")
-
-        # # resolve _use and _include statements
-        # try:
-        #     subconf = resolve_config_refs(subconf, f"{location}.{name}" if location else name, conf, subconf))
-        # except (OmegaConfBaseException, YAMLError) as exc:
-        #     raise ConfigurattError(f"config error in {path}: {exc}")
-
-        # apply schema
-        if structured is not None:
-            try:
-                subconf = OmegaConf.merge(structured, subconf) 
-            except (OmegaConfBaseException, YAMLError) as exc:
-                raise ConfigurattError(f"schema error in {path}: {exc}")
-
-        section_content[name] = subconf
-
-    if structured is None and typeinfo is not None:
-        if config_class is None:
-            config_class = "ConfigClass_" + uuid.uuid4().hex
-        fields = [(name, typeinfo) for name in section_content.keys()]
-        datacls = make_dataclass(config_class, fields)
-        structured = OmegaConf.structured(datacls)
-        section_content = OmegaConf.merge(structured, section_content)
-
-    return section_content
+    return section_content, dependencies
 
 

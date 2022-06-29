@@ -1,5 +1,5 @@
-from typing import List
-import typing
+from typing import List, Union
+from typing import Optional as _Optional
 
 logger = None
 
@@ -14,18 +14,21 @@ class Error(str):
 
 
 class ScabhaBaseException(Exception):
-    def __init__(self, message: str, nested: typing.Optional[Exception] = None, log=None):
+    def __init__(self, message: str, 
+                 nested: _Optional[Union[Exception, List[Exception]]] = None, log=None):
         """Initializes exception object
 
         Args:
             message (str): error message
-            nested (Optional[Exception]): Nested exception. Defaults to None.
+            nested (_Optional[Union[Exception, List[Exception]]]): Nested exception(s). Defaults to None.
             log (logger): if not None, logs the exception to the given logger
         """
         self.message = message
-        self.nested = nested
-        if nested is not None:
-            message = f"{message}: {nested}"
+        if isinstance(nested, Exception):
+            nested = [nested]
+        self.nested = nested or []
+        if nested:
+            message = f"{message}: {', '.join(map(str, nested))}"
         Exception.__init__(self, message)
         if log is not None:
             if not hasattr(log, 'error'):
@@ -35,6 +38,9 @@ class ScabhaBaseException(Exception):
         self.logged = log is not None
 
 class SchemaError(ScabhaBaseException):
+    pass
+
+class NestedSchemaError(SchemaError):
     pass
 
 class DefinitionError(ScabhaBaseException):
