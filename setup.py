@@ -2,11 +2,9 @@
 from setuptools import setup
 
 requirements = ["pyyaml",
-                "nose>=1.3.7",
                 "omegaconf",
                 "click",
                 "pydantic",
-                "ruamel.yaml",
                 "pyparsing",
                 "pytest",
                 "rich",
@@ -16,6 +14,8 @@ requirements = ["pyyaml",
 PACKAGE_NAME = "scabha"
 
 __version__ = "2.0.0"
+build_root = os.path.dirname(__file__)
+
 
 def readme():
     """Get readme content for package long description"""
