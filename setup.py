@@ -19,7 +19,7 @@ __version__ = "2.0"
 
 setup(name=PACKAGE_NAME,
       version=__version__,
-      description="Onboard services for passengers of Stimela (https://github.com/caracal-pipeline/stimela2) cabs",
+      description="Parameter validation, substitution, configuration and other onboard services for Stimela",
       author="Oleg Smirnov & RATT",
       author_email="osmirnov@gmail.com",
       url="https://github.com/caracal-pipeline/scabha2",
